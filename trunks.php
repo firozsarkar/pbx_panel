@@ -27,7 +27,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
     if ($action === 'edit') {
         $id = $_POST['id'];
-        // সরাসরি ইনডেক্স ধরে ডেটা আপডেট করা হলো
+        // অ্যারের ইনডেক্স ধরে সরাসরি ডেটা মডিফাই করা হচ্ছে যাতে এডিট পারফেক্টলি কাজ করে
         foreach ($trunks as $key => $trunk) {
             if ($trunk['id'] === $id) {
                 $trunks[$key]['name'] = trim($_POST['name']);
@@ -57,22 +57,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
 // Function to fetch the true registration status of the FreeSWITCH gateway
 function getFreeswitchStatus($gatewayName) {
-    // কমান্ডটি সঠিকভাবে এক্সিকিউট হচ্ছে কিনা তা দেখার জন্য ত্রুটি এড়াতে 2>&1 যুক্ত করা হয়েছে
-    $cmd = "fs_cli -x 'sofia status gateway " . escapeshellarg($gatewayName) . "' 2>&1";
+    // সঠিকভাবে ডাবল কোটেশন দিয়ে সম্পূর্ণ কমান্ড পাস করা হয়েছে যাতে bash এরর না আসে
+    $innerCmd = "sofia status gateway " . $gatewayName;
+    $cmd = "fs_cli -x " . escapeshellarg($innerCmd) . " 2>&1";
     $output = shell_exec($cmd);
 
     if ($output === null || trim($output) === '') {
-        return '<span class="badge bg-secondary" title="Check if fs_cli is installed or has permission">Offline / No Output</span>';
+        return '<span class="badge bg-secondary" title="No response from fs_cli">Offline / Timeout</span>';
     }
 
-    // স্ট্যাটাস ম্যাচিং লজিক
-    if (stripos($output, 'state: reged') !== false || stripos($output, 'Status: UP') !== false) {
+    // FreeSWITCH এর সুনির্দিষ্ট রেজিস্ট্রেশন স্ট্যাটাস ম্যাচিং লজিক
+    if (stripos($output, 'State: REGED') !== false || stripos($output, 'Status: UP') !== false) {
         return '<span class="badge bg-success">REGISTERED (UP)</span>';
-    } elseif (stripos($output, 'Status: DOWN') !== false || stripos($output, 'Noreg') !== false) {
+    } elseif (stripos($output, 'State: NOREG') !== false || stripos($output, 'Status: DOWN') !== false || stripos($output, 'Invalid Gateway') !== false) {
         return '<span class="badge bg-danger">NOT REGISTERED (DOWN)</span>';
     }
     
-    return '<span class="badge bg-warning text-dark">Unknown / Timeout</span>';
+    return '<span class="badge bg-warning text-dark">Checking...</span>';
 }
 ?>
 
@@ -81,22 +82,21 @@ function getFreeswitchStatus($gatewayName) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FreeSWITCH Trunk Manager</title>
+    <title>FreeSWITCH Trunk Management Dashboard</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         body {
-            background-color: #f4f7f6;
+            background-color: #f8fafc;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }
-        .glass-card {
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(0,0,0,0.08);
+        .dashboard-card {
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
             border-radius: 12px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.05);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
         }
         .navbar-custom {
-            background-color: #1e293b;
+            background-color: #0f172a;
         }
     </style>
 </head>
@@ -104,7 +104,7 @@ function getFreeswitchStatus($gatewayName) {
 
     <nav class="navbar navbar-dark navbar-custom shadow-sm mb-4">
         <div class="container d-flex justify-content-between align-items-center">
-            <span class="navbar-brand mb-0 h1 fw-bold">FreeSWITCH Trunk Manager</span>
+            <span class="navbar-brand mb-0 h1 fw-bold">FreeSWITCH Trunk Dashboard</span>
             <button class="btn btn-primary btn-sm px-3" data-bs-toggle="modal" data-bs-target="#addTrunkModal">+ Add New Trunk</button>
         </div>
     </nav>
@@ -112,14 +112,14 @@ function getFreeswitchStatus($gatewayName) {
     <div class="container">
         <div class="row g-4">
             <div class="col-lg-8 col-md-12">
-                <div class="card glass-card border-0 shadow-sm">
+                <div class="card dashboard-card border-0">
                     <div class="card-body p-4">
-                        <h5 class="card-title fw-bold mb-4">Configured Trunks</h5>
+                        <h5 class="card-title fw-bold mb-4">Active Gateways / Trunks</h5>
                         <div class="table-responsive">
                             <table class="table table-hover align-middle mb-0">
                                 <thead class="table-light text-uppercase fs-7">
                                     <tr>
-                                        <th>Name</th>
+                                        <th>Gateway Name</th>
                                         <th>Realm</th>
                                         <th>Username</th>
                                         <th>Status</th>
@@ -130,13 +130,13 @@ function getFreeswitchStatus($gatewayName) {
                                     <?php if (empty($trunks)): ?>
                                         <tr>
                                             <td colspan="5" class="text-center text-muted py-5">
-                                                No trunk configurations found. Click "Add New Trunk" to begin.
+                                                No trunk configurations found. Click "+ Add New Trunk" to begin.
                                             </td>
                                         </tr>
                                     <?php else: ?>
                                         <?php foreach ($trunks as $trunk): ?>
                                             <tr>
-                                                <td class="fw-semibold"><?= htmlspecialchars($trunk['name']); ?></td>
+                                                <td class="fw-semibold text-primary"><?= htmlspecialchars($trunk['name']); ?></td>
                                                 <td><?= htmlspecialchars($trunk['realm']); ?></td>
                                                 <td><?= htmlspecialchars($trunk['username']); ?></td>
                                                 <td><?= getFreeswitchStatus($trunk['name']); ?></td>
@@ -144,6 +144,7 @@ function getFreeswitchStatus($gatewayName) {
                                                     <button class="btn btn-sm btn-outline-secondary me-1" 
                                                             data-bs-toggle="modal" 
                                                             data-bs-target="#editTrunkModal<?= htmlspecialchars($trunk['id']); ?>">Edit</button>
+                                                    
                                                     <form action="" method="POST" class="d-inline">
                                                         <input type="hidden" name="action" value="delete">
                                                         <input type="hidden" name="id" value="<?= htmlspecialchars($trunk['id']); ?>">
@@ -157,7 +158,7 @@ function getFreeswitchStatus($gatewayName) {
                                                 <div class="modal-dialog">
                                                     <div class="modal-content">
                                                         <div class="modal-header">
-                                                            <h5 class="modal-title">Edit Trunk: <?= htmlspecialchars($trunk['name']); ?></h5>
+                                                            <h5 class="modal-title">Modify Trunk Parameters</h5>
                                                             <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                                                         </div>
                                                         <form action="" method="POST">
@@ -165,25 +166,25 @@ function getFreeswitchStatus($gatewayName) {
                                                             <input type="hidden" name="id" value="<?= htmlspecialchars($trunk['id']); ?>">
                                                             <div class="modal-body">
                                                                 <div class="mb-3">
-                                                                    <label class="form-label">Gateway Name</label>
+                                                                    <label class="form-label fw-semibold">Gateway Name</label>
                                                                     <input type="text" class="form-control" name="name" value="<?= htmlspecialchars($trunk['name']); ?>" required>
                                                                 </div>
                                                                 <div class="mb-3">
-                                                                    <label class="form-label">Realm (IP/Domain)</label>
+                                                                    <label class="form-label fw-semibold">Realm (SIP Server Domain / IP)</label>
                                                                     <input type="text" class="form-control" name="realm" value="<?= htmlspecialchars($trunk['realm']); ?>" required>
                                                                 </div>
                                                                 <div class="mb-3">
-                                                                    <label class="form-label">Username</label>
+                                                                    <label class="form-label fw-semibold">Username / Auth ID</label>
                                                                     <input type="text" class="form-control" name="username" value="<?= htmlspecialchars($trunk['username']); ?>" required>
                                                                 </div>
                                                                 <div class="mb-3">
-                                                                    <label class="form-label">Password <small class="text-muted">(Leave blank to keep unchanged)</small></label>
-                                                                    <input type="password" class="form-control" name="password" placeholder="New Password">
+                                                                    <label class="form-label fw-semibold">Password <small class="text-muted">(Leave empty to preserve existing)</small></label>
+                                                                    <input type="password" class="form-control" name="password" placeholder="••••••••">
                                                                 </div>
                                                             </div>
                                                             <div class="modal-footer">
-                                                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                                                                <button type="submit" class="btn btn-success">Save Changes</button>
+                                                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Dismiss</button>
+                                                                <button type="submit" class="btn btn-success">Update Configurations</button>
                                                             </div>
                                                         </form>
                                                     </div>
@@ -199,28 +200,28 @@ function getFreeswitchStatus($gatewayName) {
             </div>
 
             <div class="col-lg-4 col-md-12">
-                <div class="card glass-card border-0 shadow-sm h-100">
+                <div class="card dashboard-card border-0 h-100">
                     <div class="card-body p-4">
-                        <h5 class="card-title fw-bold mb-4">System Summary</h5>
+                        <h5 class="card-title fw-bold mb-4">Core Statistics</h5>
                         <div class="d-flex justify-content-between align-items-center mb-3 p-3 bg-light rounded-3">
-                            <span>Total Trunks</span>
+                            <span class="text-secondary fw-medium">Configured Monitored Trunks</span>
                             <span class="badge bg-primary px-3 py-2 fs-6 rounded-pill"><?= count($trunks); ?></span>
                         </div>
                         <div class="d-flex justify-content-between align-items-center mb-3 p-3 bg-light rounded-3">
-                            <span>Active Channels</span>
+                            <span class="text-secondary fw-medium">Active Concurrent Channels</span>
                             <span class="badge bg-success px-3 py-2 fs-6 rounded-pill">
                                 <?php
-                                $channelsOutput = shell_exec("fs_cli -x 'show channels count'");
+                                $channelsOutput = shell_exec("fs_cli -x 'show channels count' 2>&1");
                                 echo preg_replace('/[^0-9]/', '', $channelsOutput) ?: '0';
                                 ?>
                             </span>
                         </div>
                         <div class="d-flex justify-content-between align-items-center p-3 bg-light rounded-3">
-                            <span>Engine Status</span>
-                            <span class="text-muted small">
+                            <span class="text-secondary fw-medium">Telephony Engine Build</span>
+                            <span class="text-dark font-monospace small">
                                 <?php
-                                $verOutput = shell_exec("fs_cli -x 'version'");
-                                echo $verOutput ? substr($verOutput, 0, 25) . '...' : 'Running';
+                                $verOutput = shell_exec("fs_cli -x 'version' 2>&1");
+                                echo $verOutput ? substr(trim($verOutput), 0, 22) . '...' : 'Operational';
                                 ?>
                             </span>
                         </div>
@@ -234,32 +235,32 @@ function getFreeswitchStatus($gatewayName) {
         <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title">Add New Gateway / Trunk</h5>
+                    <h5 class="modal-title fw-bold">Provision New VoIP Gateway</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <form action="" method="POST">
                     <input type="hidden" name="action" value="add">
                     <div class="modal-body">
                         <div class="mb-3">
-                            <label class="form-label">Gateway Name</label>
-                            <input type="text" class="form-control" name="name" placeholder="e.g., sip_gw_1" required>
+                            <label class="form-label fw-semibold">Gateway Name</label>
+                            <input type="text" class="form-control" name="name" placeholder="e.g., ip_trunk_096" required>
                         </div>
                         <div class="mb-3">
-                            <label class="form-label">Realm (IP or Domain)</label>
-                            <input type="text" class="form-control" name="realm" placeholder="192.168.0.5" required>
+                            <label class="form-label fw-semibold">Realm (Host domain / IP Address)</label>
+                            <input type="text" class="form-control" name="realm" placeholder="sip.provider.com" required>
                         </div>
                         <div class="mb-3">
-                            <label class="form-label">Username</label>
-                            <input type="text" class="form-control" name="username" placeholder="User or Auth ID" required>
+                            <label class="form-label fw-semibold">Username</label>
+                            <input type="text" class="form-control" name="username" placeholder="Authentication Identity String" required>
                         </div>
                         <div class="mb-3">
-                            <label class="form-label">Password</label>
+                            <label class="form-label fw-semibold">Password</label>
                             <input type="password" class="form-control" name="password" required>
                         </div>
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                        <button type="submit" class="btn btn-primary">Save Trunk</button>
+                        <button type="submit" class="btn btn-primary">Commit Gateway Setup</button>
                     </div>
                 </form>
             </div>
