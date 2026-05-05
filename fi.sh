@@ -2,14 +2,14 @@
 
 set -e
 
-BASE="/var/www/html/fi"
+BASE="/var/www/html/"
 
 echo "==> Creating directory..."
 mkdir -p $BASE
 cd $BASE
 
 echo "==> Downloading package..."
-wget -O freeswitch-system.zip https://github.com/firozsarkar/pbx_panel/raw/refs/heads/main/freeswitch-extension-management-system.zip
+wget -O freeswitch-system.zip https://github.com/rozsarkar/pbx_panel/raw/refs/heads/main/freeswitch-extension-management-system.zip
 
 echo "==> Installing unzip if not installed..."
 apt-get update -y && apt-get install -y unzip
