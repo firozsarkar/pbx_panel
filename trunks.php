@@ -1,8 +1,18 @@
 <?php
 // File-based database
-$dataFile = __DIR__ . '/trunks.json';
+$dir = __DIR__ . '/';
+$dataFile = $dir . 'trunks.json';
+
+// স্বয়ংক্রিয়ভাবে পারমিশন চেক ও ফিক্স করার অংশ
+if (!is_dir($dir) || !is_writable($dir)) {
+    @chmod($dir, 0775);
+}
+
 if (!file_exists($dataFile)) {
     file_put_contents($dataFile, json_encode([], JSON_PRETTY_PRINT));
+    @chmod($dataFile, 0664);
+} else if (!is_writable($dataFile)) {
+    @chmod($dataFile, 0664);
 }
 
 $trunks = json_decode(file_get_contents($dataFile), true) ?: [];
@@ -27,7 +37,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
     if ($action === 'edit') {
         $id = $_POST['id'];
-        // অ্যারের ইনডেক্স ধরে সরাসরি ডেটা মডিফাই করা হচ্ছে যাতে এডিট পারফেক্টলি কাজ করে
         foreach ($trunks as $key => $trunk) {
             if ($trunk['id'] === $id) {
                 $trunks[$key]['name'] = trim($_POST['name']);
@@ -57,7 +66,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
 // Function to fetch the true registration status of the FreeSWITCH gateway
 function getFreeswitchStatus($gatewayName) {
-    // সঠিকভাবে ডাবল কোটেশন দিয়ে সম্পূর্ণ কমান্ড পাস করা হয়েছে যাতে bash এরর না আসে
     $innerCmd = "sofia status gateway " . $gatewayName;
     $cmd = "fs_cli -x " . escapeshellarg($innerCmd) . " 2>&1";
     $output = shell_exec($cmd);
@@ -66,7 +74,7 @@ function getFreeswitchStatus($gatewayName) {
         return '<span class="badge bg-secondary" title="No response from fs_cli">Offline / Timeout</span>';
     }
 
-    // FreeSWITCH এর সুনির্দিষ্ট রেজিস্ট্রেশন স্ট্যাটাস ম্যাচিং লজিক
+    // স্ট্যাটাস ম্যাচিং লজিক
     if (stripos($output, 'State: REGED') !== false || stripos($output, 'Status: UP') !== false) {
         return '<span class="badge bg-success">REGISTERED (UP)</span>';
     } elseif (stripos($output, 'State: NOREG') !== false || stripos($output, 'Status: DOWN') !== false || stripos($output, 'Invalid Gateway') !== false) {
