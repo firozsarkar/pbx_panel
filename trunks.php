@@ -27,13 +27,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
     if ($action === 'edit') {
         $id = $_POST['id'];
-        foreach ($trunks as &$trunk) {
+        // সরাসরি ইনডেক্স ধরে ডেটা আপডেট করা হলো
+        foreach ($trunks as $key => $trunk) {
             if ($trunk['id'] === $id) {
-                $trunk['name'] = trim($_POST['name']);
-                $trunk['realm'] = trim($_POST['realm']);
-                $trunk['username'] = trim($_POST['username']);
+                $trunks[$key]['name'] = trim($_POST['name']);
+                $trunks[$key]['realm'] = trim($_POST['realm']);
+                $trunks[$key]['username'] = trim($_POST['username']);
                 if (!empty($_POST['password'])) {
-                    $trunk['password'] = trim($_POST['password']);
+                    $trunks[$key]['password'] = trim($_POST['password']);
                 }
                 break;
             }
@@ -56,22 +57,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
 // Function to fetch the true registration status of the FreeSWITCH gateway
 function getFreeswitchStatus($gatewayName) {
-    // FreeSWITCH CLI command to get gateway status
-    $cmd = "fs_cli -x 'sofia status gateway " . escapeshellarg($gatewayName) . "'";
+    // কমান্ডটি সঠিকভাবে এক্সিকিউট হচ্ছে কিনা তা দেখার জন্য ত্রুটি এড়াতে 2>&1 যুক্ত করা হয়েছে
+    $cmd = "fs_cli -x 'sofia status gateway " . escapeshellarg($gatewayName) . "' 2>&1";
     $output = shell_exec($cmd);
 
-    if ($output === null) {
-        return '<span class="badge bg-secondary">Offline / Timeout</span>';
+    if ($output === null || trim($output) === '') {
+        return '<span class="badge bg-secondary" title="Check if fs_cli is installed or has permission">Offline / No Output</span>';
     }
 
-    // Check for 'REGED' (Registered) or 'UP' status in the CLI response
-    if (stripos($output, 'State: REGED') !== false || stripos($output, 'UP') !== false) {
+    // স্ট্যাটাস ম্যাচিং লজিক
+    if (stripos($output, 'state: reged') !== false || stripos($output, 'Status: UP') !== false) {
         return '<span class="badge bg-success">REGISTERED (UP)</span>';
-    } elseif (stripos($output, 'NOREG') !== false || stripos($output, 'DOWN') !== false) {
+    } elseif (stripos($output, 'Status: DOWN') !== false || stripos($output, 'Noreg') !== false) {
         return '<span class="badge bg-danger">NOT REGISTERED (DOWN)</span>';
     }
     
-    return '<span class="badge bg-warning text-dark">Unknown / No Gateway Found</span>';
+    return '<span class="badge bg-warning text-dark">Unknown / Timeout</span>';
 }
 ?>
 
@@ -142,17 +143,17 @@ function getFreeswitchStatus($gatewayName) {
                                                 <td class="text-end">
                                                     <button class="btn btn-sm btn-outline-secondary me-1" 
                                                             data-bs-toggle="modal" 
-                                                            data-bs-target="#editTrunkModal<?= $trunk['id']; ?>">Edit</button>
+                                                            data-bs-target="#editTrunkModal<?= htmlspecialchars($trunk['id']); ?>">Edit</button>
                                                     <form action="" method="POST" class="d-inline">
                                                         <input type="hidden" name="action" value="delete">
-                                                        <input type="hidden" name="id" value="<?= $trunk['id']; ?>">
+                                                        <input type="hidden" name="id" value="<?= htmlspecialchars($trunk['id']); ?>">
                                                         <button class="btn btn-sm btn-outline-danger" 
                                                                 onclick="return confirm('Are you sure you want to delete this trunk?');">Delete</button>
                                                     </form>
                                                 </td>
                                             </tr>
 
-                                            <div class="modal fade" id="editTrunkModal<?= $trunk['id']; ?>" tabindex="-1" aria-hidden="true">
+                                            <div class="modal fade" id="editTrunkModal<?= htmlspecialchars($trunk['id']); ?>" tabindex="-1" aria-hidden="true">
                                                 <div class="modal-dialog">
                                                     <div class="modal-content">
                                                         <div class="modal-header">
@@ -161,7 +162,7 @@ function getFreeswitchStatus($gatewayName) {
                                                         </div>
                                                         <form action="" method="POST">
                                                             <input type="hidden" name="action" value="edit">
-                                                            <input type="hidden" name="id" value="<?= $trunk['id']; ?>">
+                                                            <input type="hidden" name="id" value="<?= htmlspecialchars($trunk['id']); ?>">
                                                             <div class="modal-body">
                                                                 <div class="mb-3">
                                                                     <label class="form-label">Gateway Name</label>
