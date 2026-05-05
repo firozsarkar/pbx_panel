@@ -1,0 +1,354 @@
+
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font-sans)}
+.tabs{display:flex;gap:4px;border-bottom:0.5px solid var(--color-border-tertiary);margin-bottom:1.5rem}
+.tab{padding:8px 16px;font-size:13px;cursor:pointer;border:none;background:none;color:var(--color-text-secondary);border-bottom:2px solid transparent;margin-bottom:-1px}
+.tab.active{color:var(--color-text-primary);border-bottom:2px solid var(--color-text-primary);font-weight:500}
+.card{background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:1.25rem;margin-bottom:1rem}
+.card-title{font-size:14px;font-weight:500;margin-bottom:1rem;color:var(--color-text-primary)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+.stat-card{background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:1rem}
+.stat-label{font-size:12px;color:var(--color-text-secondary);margin-bottom:4px}
+.stat-val{font-size:22px;font-weight:500;color:var(--color-text-primary)}
+.badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:500}
+.badge-green{background:#EAF3DE;color:#3B6D11}
+.badge-red{background:#FCEBEB;color:#A32D2D}
+.badge-amber{background:#FAEEDA;color:#854F0B}
+.badge-blue{background:#E6F1FB;color:#185FA5}
+label{display:block;font-size:12px;color:var(--color-text-secondary);margin-bottom:4px;margin-top:12px}
+label:first-child{margin-top:0}
+input,select,textarea{width:100%;padding:7px 10px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:var(--color-background-primary);color:var(--color-text-primary);font-size:13px;font-family:var(--font-sans)}
+textarea{resize:vertical;min-height:80px}
+.btn{padding:7px 16px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:var(--color-background-primary);color:var(--color-text-primary);font-size:13px;cursor:pointer;font-family:var(--font-sans)}
+.btn:hover{background:var(--color-background-secondary)}
+.btn-primary{background:var(--color-text-primary);color:var(--color-background-primary);border-color:var(--color-text-primary)}
+.btn-primary:hover{opacity:0.85}
+.btn-danger{background:#FCEBEB;color:#A32D2D;border-color:#F7C1C1}
+.table-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;padding:8px 12px;font-size:11px;font-weight:500;color:var(--color-text-secondary);border-bottom:0.5px solid var(--color-border-tertiary);text-transform:uppercase;letter-spacing:0.04em}
+td{padding:9px 12px;border-bottom:0.5px solid var(--color-border-tertiary);color:var(--color-text-primary)}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:var(--color-background-secondary)}
+.row{display:flex;gap:12px;align-items:flex-end}
+.row .grow{flex:1}
+.section{display:none}
+.section.active{display:block}
+.log-box{background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:1rem;font-family:var(--font-mono);font-size:12px;color:var(--color-text-secondary);max-height:220px;overflow-y:auto;line-height:1.8}
+.toggle-wrap{display:flex;align-items:center;gap:8px;margin-top:8px}
+.toggle{position:relative;width:36px;height:20px;cursor:pointer}
+.toggle input{opacity:0;width:0;height:0;position:absolute}
+.toggle-slider{position:absolute;inset:0;background:var(--color-border-secondary);border-radius:20px;transition:0.2s}
+.toggle-slider:before{content:'';position:absolute;width:14px;height:14px;left:3px;top:3px;background:#fff;border-radius:50%;transition:0.2s}
+.toggle input:checked + .toggle-slider{background:#3B6D11}
+.toggle input:checked + .toggle-slider:before{transform:translateX(16px)}
+</style>
+
+<h2 class="sr-only">FreeSWITCH Gateway Management Panel</h2>
+
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem">
+  <div>
+    <p style="font-size:18px;font-weight:500;color:var(--color-text-primary)">FreeSWITCH Gateway Manager</p>
+    <p style="font-size:13px;color:var(--color-text-secondary);margin-top:2px">VoIP Gateway configuration &amp; monitoring</p>
+  </div>
+  <span class="badge badge-green" style="font-size:12px;padding:4px 12px">● System Online</span>
+</div>
+
+<div class="tabs">
+  <button class="tab active" onclick="showTab('dashboard')">Dashboard</button>
+  <button class="tab" onclick="showTab('gateways')">Gateways</button>
+  <button class="tab" onclick="showTab('addgw')">+ Add Gateway</button>
+  <button class="tab" onclick="showTab('dialplan')">Dialplan</button>
+  <button class="tab" onclick="showTab('logs')">Logs &amp; CDR</button>
+  <button class="tab" onclick="showTab('config')">XML Config</button>
+</div>
+
+<div id="tab-dashboard" class="section active">
+  <div class="grid3" style="margin-bottom:1rem">
+    <div class="stat-card"><div class="stat-label">Active Gateways</div><div class="stat-val" id="gw-count">3</div></div>
+    <div class="stat-card"><div class="stat-label">Active Calls</div><div class="stat-val" id="call-count">12</div></div>
+    <div class="stat-card"><div class="stat-label">Total CDR Today</div><div class="stat-val">847</div></div>
+  </div>
+  <div class="card">
+    <div class="card-title">Gateway Status</div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Name</th><th>Host</th><th>Username</th><th>Status</th><th>Calls</th><th>Action</th></tr></thead>
+        <tbody id="gw-table-body"></tbody>
+      </table>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title">FreeSWITCH ESL Command</div>
+    <div class="row">
+      <input class="grow" type="text" id="esl-cmd" placeholder="e.g. sofia status, show calls" value="sofia status">
+      <button class="btn btn-primary" onclick="runCmd()">Run</button>
+    </div>
+    <div class="log-box" id="esl-out" style="margin-top:10px">Ready. Enter a command above...</div>
+  </div>
+</div>
+
+<div id="tab-gateways" class="section">
+  <div class="card">
+    <div class="card-title">All Gateways</div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Name</th><th>Host</th><th>Port</th><th>User</th><th>Transport</th><th>Codec</th><th>Status</th><th>Actions</th></tr></thead>
+        <tbody id="gw-full-table"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div id="tab-addgw" class="section">
+  <div class="card">
+    <div class="card-title">Add New SIP Gateway</div>
+    <div class="grid2">
+      <div>
+        <label>Gateway Name *</label>
+        <input type="text" id="gw-name" placeholder="e.g. my-carrier-1">
+        <label>SIP Host / IP *</label>
+        <input type="text" id="gw-host" placeholder="e.g. sip.carrier.com">
+        <label>SIP Port</label>
+        <input type="text" id="gw-port" placeholder="5060" value="5060">
+        <label>Username *</label>
+        <input type="text" id="gw-user" placeholder="SIP Username">
+        <label>Password *</label>
+        <input type="password" id="gw-pass" placeholder="SIP Password">
+        <label>From User</label>
+        <input type="text" id="gw-from" placeholder="same as username">
+      </div>
+      <div>
+        <label>Realm / Domain</label>
+        <input type="text" id="gw-realm" placeholder="auto-detect">
+        <label>Transport</label>
+        <select id="gw-transport">
+          <option>UDP</option><option>TCP</option><option>TLS</option>
+        </select>
+        <label>Codec Priority</label>
+        <select id="gw-codec">
+          <option>PCMA,PCMU,G729</option>
+          <option>PCMU,PCMA</option>
+          <option>G729,PCMA,PCMU</option>
+          <option>G722,PCMA,PCMU</option>
+        </select>
+        <label>Register</label>
+        <div class="toggle-wrap">
+          <label class="toggle"><input type="checkbox" id="gw-reg" checked><span class="toggle-slider"></span></label>
+          <span style="font-size:13px;color:var(--color-text-secondary)">Enable Registration</span>
+        </div>
+        <label style="margin-top:16px">Expire (seconds)</label>
+        <input type="text" id="gw-expire" placeholder="3600" value="3600">
+        <label>Outbound Proxy (optional)</label>
+        <input type="text" id="gw-proxy" placeholder="e.g. proxy.carrier.com">
+        <label>Caller ID Name</label>
+        <input type="text" id="gw-cid" placeholder="My Company">
+      </div>
+    </div>
+    <div style="margin-top:1rem;display:flex;gap:8px">
+      <button class="btn btn-primary" onclick="addGateway()">Save Gateway ↗</button>
+      <button class="btn" onclick="previewXML()">Preview XML</button>
+    </div>
+    <div id="xml-preview" style="display:none;margin-top:1rem">
+      <div class="card-title">Generated XML Config</div>
+      <div class="log-box" id="xml-out" style="white-space:pre"></div>
+    </div>
+  </div>
+</div>
+
+<div id="tab-dialplan" class="section">
+  <div class="card">
+    <div class="card-title">Dialplan Rules</div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Context</th><th>Name</th><th>Pattern</th><th>Action</th><th>Gateway</th><th>Edit</th></tr></thead>
+        <tbody>
+          <tr><td><span class="badge badge-blue">default</span></td><td>International</td><td><code>^(00\d+)$</code></td><td>bridge</td><td>carrier-intl</td><td><button class="btn" style="padding:3px 10px;font-size:12px" onclick="sendPrompt('Edit dialplan rule for international calls with FreeSWITCH XML')">Edit ↗</button></td></tr>
+          <tr><td><span class="badge badge-blue">default</span></td><td>Local DID</td><td><code>^(\d{10})$</code></td><td>bridge</td><td>carrier-local</td><td><button class="btn" style="padding:3px 10px;font-size:12px" onclick="sendPrompt('Edit dialplan rule for local DID routing in FreeSWITCH')">Edit ↗</button></td></tr>
+          <tr><td><span class="badge badge-amber">public</span></td><td>Inbound DID</td><td><code>^880\d{8}$</code></td><td>transfer</td><td>—</td><td><button class="btn" style="padding:3px 10px;font-size:12px" onclick="sendPrompt('Edit inbound DID dialplan rule in FreeSWITCH')">Edit ↗</button></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div style="margin-top:1rem">
+      <button class="btn" onclick="sendPrompt('Create a new FreeSWITCH dialplan rule with XML example')">+ Add Rule ↗</button>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title">Custom XML Dialplan Editor</div>
+    <textarea id="dialplan-xml" style="font-family:var(--font-mono);font-size:12px;min-height:160px">&lt;extension name="outbound_intl"&gt;
+  &lt;condition field="destination_number" expression="^(00\d+)$"&gt;
+    &lt;action application="set" data="effective_caller_id_number=+8801XXXXXXXXX"/&gt;
+    &lt;action application="bridge" data="sofia/gateway/carrier-intl/$1"/&gt;
+  &lt;/condition&gt;
+&lt;/extension&gt;</textarea>
+    <div style="margin-top:8px;display:flex;gap:8px">
+      <button class="btn btn-primary" onclick="sendPrompt('Validate and explain this FreeSWITCH dialplan XML: ' + document.getElementById('dialplan-xml').value)">Validate &amp; Save ↗</button>
+    </div>
+  </div>
+</div>
+
+<div id="tab-logs" class="section">
+  <div class="grid2" style="margin-bottom:1rem">
+    <div class="stat-card"><div class="stat-label">Calls Today</div><div class="stat-val">847</div></div>
+    <div class="stat-card"><div class="stat-label">Failed Calls</div><div class="stat-val" style="color:#A32D2D">23</div></div>
+  </div>
+  <div class="card">
+    <div class="card-title">Recent CDR (Call Detail Records)</div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Time</th><th>From</th><th>To</th><th>Gateway</th><th>Duration</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td>14:32:11</td><td>+8801711XXXXXX</td><td>+97150XXXXXXX</td><td>carrier-intl</td><td>4m 12s</td><td><span class="badge badge-green">ANSWERED</span></td></tr>
+          <tr><td>14:28:05</td><td>+8801812XXXXXX</td><td>+44207XXXXXXX</td><td>carrier-intl</td><td>0s</td><td><span class="badge badge-red">FAILED</span></td></tr>
+          <tr><td>14:25:43</td><td>1001</td><td>+8801911XXXXXX</td><td>carrier-local</td><td>1m 38s</td><td><span class="badge badge-green">ANSWERED</span></td></tr>
+          <tr><td>14:21:17</td><td>1002</td><td>+8801511XXXXXX</td><td>carrier-local</td><td>7m 02s</td><td><span class="badge badge-green">ANSWERED</span></td></tr>
+          <tr><td>14:18:50</td><td>+8801611XXXXXX</td><td>+6512XXXXXXXX</td><td>carrier-intl</td><td>2m 55s</td><td><span class="badge badge-amber">BUSY</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title">Live FreeSWITCH Log</div>
+    <div class="log-box" id="live-log">
+2025-05-05 14:32:11.234 [INFO] sofia.c:7892 Registering gateway: carrier-intl
+2025-05-05 14:32:11.891 [INFO] mod_sofia.c:5432 Registration OK: carrier-intl (200 OK)
+2025-05-05 14:28:05.111 [WARNING] mod_sofia.c:3201 Gateway carrier-intl: 503 Service Unavailable
+2025-05-05 14:25:43.002 [INFO] switch_channel.c:1872 New Channel sofia/internal/1001@192.168.1.10
+2025-05-05 14:25:44.445 [INFO] mod_sofia.c:5012 Bridging call to sofia/gateway/carrier-local/+8801911XXXXXX
+2025-05-05 14:21:17.300 [INFO] switch_channel.c:1872 New Channel sofia/internal/1002@192.168.1.11
+    </div>
+  </div>
+</div>
+
+<div id="tab-config" class="section">
+  <div class="card">
+    <div class="card-title">sofia.conf.xml — SIP Profile Config</div>
+    <textarea style="font-family:var(--font-mono);font-size:12px;min-height:200px">&lt;configuration name="sofia.conf" description="sofia Endpoint"&gt;
+  &lt;global_settings&gt;
+    &lt;param name="log-level" value="0"/&gt;
+    &lt;param name="debug-presence" value="0"/&gt;
+  &lt;/global_settings&gt;
+  &lt;profiles&gt;
+    &lt;profile name="internal"&gt;
+      &lt;gateways&gt;
+        &lt;!-- Gateways defined per gateway XML files --&gt;
+      &lt;/gateways&gt;
+      &lt;settings&gt;
+        &lt;param name="sip-ip" value="$${local_ip_v4}"/&gt;
+        &lt;param name="sip-port" value="5060"/&gt;
+        &lt;param name="rtp-ip" value="$${local_ip_v4}"/&gt;
+        &lt;param name="codec-prefs" value="PCMA,PCMU,G729"/&gt;
+      &lt;/settings&gt;
+    &lt;/profile&gt;
+  &lt;/profiles&gt;
+&lt;/configuration&gt;</textarea>
+    <div style="margin-top:8px;display:flex;gap:8px">
+      <button class="btn btn-primary" onclick="sendPrompt('Review and optimize this FreeSWITCH sofia.conf.xml configuration')">Review Config ↗</button>
+      <button class="btn" onclick="sendPrompt('Show FreeSWITCH sofia.conf.xml full example with all parameters explained')">Full Example ↗</button>
+    </div>
+  </div>
+</div>
+
+<script>
+var gateways = [
+  {name:'carrier-intl',host:'sip.carrier-intl.com',port:'5060',user:'bd_account_01',transport:'UDP',codec:'PCMA,PCMU',status:'REGED'},
+  {name:'carrier-local',host:'192.168.10.5',port:'5060',user:'local_gw',transport:'UDP',codec:'PCMA,PCMU,G729',status:'REGED'},
+  {name:'carrier-backup',host:'backup.sip.net',port:'5060',user:'backup_user',transport:'TCP',codec:'PCMU,PCMA',status:'UNREGED'}
+];
+
+function renderGWTable(){
+  var tb=document.getElementById('gw-table-body');
+  if(!tb)return;
+  tb.innerHTML=gateways.map(function(g){
+    var s=g.status==='REGED'?'<span class="badge badge-green">REGED</span>':'<span class="badge badge-red">UNREGED</span>';
+    var calls=g.status==='REGED'?Math.floor(Math.random()*8):'—';
+    return '<tr><td>'+g.name+'</td><td>'+g.host+'</td><td>'+g.user+'</td><td>'+s+'</td><td>'+calls+'</td><td><button class="btn btn-danger" style="padding:3px 10px;font-size:12px" onclick="deleteGW(\''+g.name+'\')">Delete</button></td></tr>';
+  }).join('');
+  document.getElementById('gw-count').textContent=gateways.filter(function(g){return g.status==='REGED'}).length;
+}
+
+function renderFullTable(){
+  var tb=document.getElementById('gw-full-table');
+  if(!tb)return;
+  tb.innerHTML=gateways.map(function(g){
+    var s=g.status==='REGED'?'<span class="badge badge-green">REGED</span>':'<span class="badge badge-red">UNREGED</span>';
+    return '<tr><td>'+g.name+'</td><td>'+g.host+'</td><td>'+g.port+'</td><td>'+g.user+'</td><td>'+g.transport+'</td><td>'+g.codec+'</td><td>'+s+'</td><td><button class="btn" style="padding:3px 10px;font-size:12px" onclick="deleteGW(\''+g.name+'\')">Delete</button></td></tr>';
+  }).join('');
+}
+
+function deleteGW(name){
+  gateways=gateways.filter(function(g){return g.name!==name});
+  renderGWTable();renderFullTable();
+}
+
+function addGateway(){
+  var name=document.getElementById('gw-name').value;
+  var host=document.getElementById('gw-host').value;
+  if(!name||!host){alert('Gateway Name and Host required');return;}
+  gateways.push({
+    name:name,host:host,
+    port:document.getElementById('gw-port').value||'5060',
+    user:document.getElementById('gw-user').value,
+    transport:document.getElementById('gw-transport').value,
+    codec:document.getElementById('gw-codec').value,
+    status:'REGED'
+  });
+  renderGWTable();renderFullTable();
+  showTab('gateways');
+  document.getElementById('gw-name').value='';
+  document.getElementById('gw-host').value='';
+  document.getElementById('gw-user').value='';
+  document.getElementById('gw-pass').value='';
+}
+
+function previewXML(){
+  var name=document.getElementById('gw-name').value||'my-gateway';
+  var host=document.getElementById('gw-host').value||'sip.carrier.com';
+  var user=document.getElementById('gw-user').value||'username';
+  var port=document.getElementById('gw-port').value||'5060';
+  var transport=document.getElementById('gw-transport').value.toLowerCase();
+  var expire=document.getElementById('gw-expire').value||'3600';
+  var proxy=document.getElementById('gw-proxy').value;
+  var reg=document.getElementById('gw-reg').checked?'true':'false';
+  var xml=`<gateway name="${name}">
+  <param name="username" value="${user}"/>
+  <param name="realm" value="${host}"/>
+  <param name="from-user" value="${user}"/>
+  <param name="from-domain" value="${host}"/>
+  <param name="password" value="YOUR_PASSWORD"/>
+  <param name="proxy" value="${proxy||host}:${port}"/>
+  <param name="register-transport" value="${transport}"/>
+  <param name="expire-seconds" value="${expire}"/>
+  <param name="register" value="${reg}"/>
+  <param name="retry-seconds" value="30"/>
+  <param name="ping" value="25"/>
+</gateway>`;
+  document.getElementById('xml-preview').style.display='block';
+  document.getElementById('xml-out').textContent=xml;
+}
+
+var cmdOutputs={
+  'sofia status':'Profile::internal\n  Calls-In: 8\n  Calls-Out: 4\n  Failed-Calls: 1\n\nGateway carrier-intl: REGED\nGateway carrier-local: REGED\nGateway carrier-backup: UNREGED',
+  'show calls':'Total Channels: 12\n\ncall-id: a1b2c3 direction: outbound\n  ani: +8801711XXXXXX dnis: +97150XXXXXXX\n  gateway: carrier-intl elapsed: 00:04:12\n\ncall-id: d4e5f6 direction: inbound\n  ani: +8801812XXXXXX dnis: 1001\n  gateway: carrier-local elapsed: 00:01:38',
+  'status':'UP 0 years, 2 days, 14 hours\nFreeSWITCH (Version 1.10.9) is ready\nRAM: 512MB / 2048MB\nCPU: 12%'
+};
+
+function runCmd(){
+  var cmd=document.getElementById('esl-cmd').value.trim();
+  var out=cmdOutputs[cmd]||'% Command executed: '+cmd+'\n[Simulated output — connect real ESL for live data]';
+  document.getElementById('esl-out').textContent=out;
+}
+
+function showTab(id){
+  document.querySelectorAll('.section').forEach(function(s){s.classList.remove('active')});
+  document.querySelectorAll('.tab').forEach(function(t){t.classList.remove('active')});
+  document.getElementById('tab-'+id).classList.add('active');
+  var tabs={dashboard:0,gateways:1,addgw:2,dialplan:3,logs:4,config:5};
+  document.querySelectorAll('.tab')[tabs[id]].classList.add('active');
+}
+
+renderGWTable();
+renderFullTable();
+</script>
