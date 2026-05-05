@@ -1,50 +1,77 @@
 <?php
-// File-based database or you can replace this with MySQL
-$dataFile = 'trunks.json';
-
+// File-based database
+$dataFile = __DIR__ . '/trunks.json';
 if (!file_exists($dataFile)) {
-    file_put_contents($dataFile, json_encode([]));
+    file_put_contents($dataFile, json_encode([], JSON_PRETTY_PRINT));
 }
 
-$trunks = json_decode(file_get_contents($dataFile), true);
+$trunks = json_decode(file_get_contents($dataFile), true) ?: [];
 
-// Handle Form Actions (Add, Delete, Edit)
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (isset($_POST['action'])) {
-        if ($_POST['action'] === 'add') {
-            $newTrunk = [
-                'id' => uniqid(),
-                'name' => trim($_POST['name']),
-                'realm' => trim($_POST['realm']),
-                'username' => trim($_POST['username']),
-                'password' => trim($_POST['password']),
-                'status' => 'Unknown'
-            ];
-            $trunks[] = $newTrunk;
-            file_put_contents($dataFile, json_encode($trunks, JSON_PRETTY_PRINT));
-            header('Location: trunks.php');
-            exit;
-        } 
-        elseif ($_POST['action'] === 'delete') {
-            $id = $_POST['id'];
-            $trunks = array_filter($trunks, function($item) use ($id) {
-                return $item['id'] !== $id;
-            });
-            file_put_contents($dataFile, json_encode(array_values($trunks), JSON_PRETTY_PRINT));
-            header('Location: trunks.php');
-            exit;
+// Form Handling (Add, Edit, Delete)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
+    $action = $_POST['action'];
+
+    if ($action === 'add') {
+        $newTrunk = [
+            'id' => uniqid(),
+            'name' => trim($_POST['name']),
+            'realm' => trim($_POST['realm']),
+            'username' => trim($_POST['username']),
+            'password' => trim($_POST['password'])
+        ];
+        $trunks[] = $newTrunk;
+        file_put_contents($dataFile, json_encode($trunks, JSON_PRETTY_PRINT));
+        header('Location: ' . $_SERVER['PHP_SELF']);
+        exit;
+    }
+
+    if ($action === 'edit') {
+        $id = $_POST['id'];
+        foreach ($trunks as &$trunk) {
+            if ($trunk['id'] === $id) {
+                $trunk['name'] = trim($_POST['name']);
+                $trunk['realm'] = trim($_POST['realm']);
+                $trunk['username'] = trim($_POST['username']);
+                if (!empty($_POST['password'])) {
+                    $trunk['password'] = trim($_POST['password']);
+                }
+                break;
+            }
         }
+        file_put_contents($dataFile, json_encode($trunks, JSON_PRETTY_PRINT));
+        header('Location: ' . $_SERVER['PHP_SELF']);
+        exit;
+    }
+
+    if ($action === 'delete') {
+        $id = $_POST['id'];
+        $trunks = array_filter($trunks, function ($item) use ($id) {
+            return $item['id'] !== $id;
+        });
+        file_put_contents($dataFile, json_encode(array_values($trunks), JSON_PRETTY_PRINT));
+        header('Location: ' . $_SERVER['PHP_SELF']);
+        exit;
     }
 }
 
-// Function to check actual FreeSWITCH Trunk Status using fs_cli
-function checkFreeSwitchStatus($gatewayName) {
-    // FreeSWITCH command line execution
-    // $command = "fs_cli -x 'sofia status gateway " . escapeshellarg($gatewayName) . "'";
-    // $output = shell_exec($command);
+// Function to fetch the true registration status of the FreeSWITCH gateway
+function getFreeswitchStatus($gatewayName) {
+    // FreeSWITCH CLI command to get gateway status
+    $cmd = "fs_cli -x 'sofia status gateway " . escapeshellarg($gatewayName) . "'";
+    $output = shell_exec($cmd);
+
+    if ($output === null) {
+        return '<span class="badge bg-secondary">Offline / Timeout</span>';
+    }
+
+    // Check for 'REGED' (Registered) or 'UP' status in the CLI response
+    if (stripos($output, 'State: REGED') !== false || stripos($output, 'UP') !== false) {
+        return '<span class="badge bg-success">REGISTERED (UP)</span>';
+    } elseif (stripos($output, 'NOREG') !== false || stripos($output, 'DOWN') !== false) {
+        return '<span class="badge bg-danger">NOT REGISTERED (DOWN)</span>';
+    }
     
-    // For demonstration, we simulate the status check randomly or based on name
-    return (rand(0, 1) === 1) ? '<span class="badge bg-success">UP</span>' : '<span class="badge bg-danger">DOWN</span>';
+    return '<span class="badge bg-warning text-dark">Unknown / No Gateway Found</span>';
 }
 ?>
 
@@ -61,138 +88,183 @@ function checkFreeSwitchStatus($gatewayName) {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }
         .glass-card {
-            background: rgba(255, 255, 255, 0.9);
+            background: rgba(255, 255, 255, 0.95);
             backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(0,0,0,0.08);
             border-radius: 12px;
-            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.1);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.05);
         }
-        .card-header {
-            background-color: #2c3e50;
-            color: #ffffff;
-            border-top-left-radius: 10px !important;
-            border-top-right-radius: 10px !important;
-        }
-        .table-hover tbody tr:hover {
-            background-color: #e9ecef;
+        .navbar-custom {
+            background-color: #1e293b;
         }
     </style>
 </head>
-<body class="py-5">
+<body class="pb-5">
 
-<div class="container">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2>FreeSWITCH Trunk Management</h2>
-        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addTrunkModal">+ Add New Trunk</button>
-    </div>
+    <nav class="navbar navbar-dark navbar-custom shadow-sm mb-4">
+        <div class="container d-flex justify-content-between align-items-center">
+            <span class="navbar-brand mb-0 h1 fw-bold">FreeSWITCH Trunk Manager</span>
+            <button class="btn btn-primary btn-sm px-3" data-bs-toggle="modal" data-bs-target="#addTrunkModal">+ Add New Trunk</button>
+        </div>
+    </nav>
 
-    <div class="row g-4">
-        <div class="col-md-8">
-            <div class="card glass-card shadow-sm border-0 h-100">
-                <div class="card-header border-0 py-3 d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0">Active Trunks & Status</h5>
-                </div>
-                <div class="card-body">
-                    <div class="table-responsive">
-                        <table class="table table-hover align-middle mb-0">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>Name</th>
-                                    <th>Realm / IP</th>
-                                    <th>Username</th>
-                                    <th>Status</th>
-                                    <th>Action</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php if (empty($trunks)): ?>
+    <div class="container">
+        <div class="row g-4">
+            <div class="col-lg-8 col-md-12">
+                <div class="card glass-card border-0 shadow-sm">
+                    <div class="card-body p-4">
+                        <h5 class="card-title fw-bold mb-4">Configured Trunks</h5>
+                        <div class="table-responsive">
+                            <table class="table table-hover align-middle mb-0">
+                                <thead class="table-light text-uppercase fs-7">
                                     <tr>
-                                        <td colspan="5" class="text-center text-muted py-4">No trunks configured yet.</td>
+                                        <th>Name</th>
+                                        <th>Realm</th>
+                                        <th>Username</th>
+                                        <th>Status</th>
+                                        <th class="text-end">Actions</th>
                                     </tr>
-                                <?php else: ?>
-                                    <?php foreach ($trunks as $trunk): ?>
+                                </thead>
+                                <tbody>
+                                    <?php if (empty($trunks)): ?>
                                         <tr>
-                                            <td><strong><?= htmlspecialchars($trunk['name']); ?></strong></td>
-                                            <td><?= htmlspecialchars($trunk['realm']); ?></td>
-                                            <td><?= htmlspecialchars($trunk['username']); ?></td>
-                                            <td>
-                                                <?= checkFreeSwitchStatus($trunk['name']); ?>
-                                            </td>
-                                            <td>
-                                                <form action="trunks.php" method="POST" class="d-inline">
-                                                    <input type="hidden" name="action" value="delete">
-                                                    <input type="hidden" name="id" value="<?= $trunk['id']; ?>">
-                                                    <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Are you sure you want to delete this trunk?');">Delete</button>
-                                                </form>
+                                            <td colspan="5" class="text-center text-muted py-5">
+                                                No trunk configurations found. Click "Add New Trunk" to begin.
                                             </td>
                                         </tr>
-                                    <?php endforeach; ?>
-                                <?php endif; ?>
-                            </tbody>
-                        </table>
+                                    <?php else: ?>
+                                        <?php foreach ($trunks as $trunk): ?>
+                                            <tr>
+                                                <td class="fw-semibold"><?= htmlspecialchars($trunk['name']); ?></td>
+                                                <td><?= htmlspecialchars($trunk['realm']); ?></td>
+                                                <td><?= htmlspecialchars($trunk['username']); ?></td>
+                                                <td><?= getFreeswitchStatus($trunk['name']); ?></td>
+                                                <td class="text-end">
+                                                    <button class="btn btn-sm btn-outline-secondary me-1" 
+                                                            data-bs-toggle="modal" 
+                                                            data-bs-target="#editTrunkModal<?= $trunk['id']; ?>">Edit</button>
+                                                    <form action="" method="POST" class="d-inline">
+                                                        <input type="hidden" name="action" value="delete">
+                                                        <input type="hidden" name="id" value="<?= $trunk['id']; ?>">
+                                                        <button class="btn btn-sm btn-outline-danger" 
+                                                                onclick="return confirm('Are you sure you want to delete this trunk?');">Delete</button>
+                                                    </form>
+                                                </td>
+                                            </tr>
+
+                                            <div class="modal fade" id="editTrunkModal<?= $trunk['id']; ?>" tabindex="-1" aria-hidden="true">
+                                                <div class="modal-dialog">
+                                                    <div class="modal-content">
+                                                        <div class="modal-header">
+                                                            <h5 class="modal-title">Edit Trunk: <?= htmlspecialchars($trunk['name']); ?></h5>
+                                                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                                        </div>
+                                                        <form action="" method="POST">
+                                                            <input type="hidden" name="action" value="edit">
+                                                            <input type="hidden" name="id" value="<?= $trunk['id']; ?>">
+                                                            <div class="modal-body">
+                                                                <div class="mb-3">
+                                                                    <label class="form-label">Gateway Name</label>
+                                                                    <input type="text" class="form-control" name="name" value="<?= htmlspecialchars($trunk['name']); ?>" required>
+                                                                </div>
+                                                                <div class="mb-3">
+                                                                    <label class="form-label">Realm (IP/Domain)</label>
+                                                                    <input type="text" class="form-control" name="realm" value="<?= htmlspecialchars($trunk['realm']); ?>" required>
+                                                                </div>
+                                                                <div class="mb-3">
+                                                                    <label class="form-label">Username</label>
+                                                                    <input type="text" class="form-control" name="username" value="<?= htmlspecialchars($trunk['username']); ?>" required>
+                                                                </div>
+                                                                <div class="mb-3">
+                                                                    <label class="form-label">Password <small class="text-muted">(Leave blank to keep unchanged)</small></label>
+                                                                    <input type="password" class="form-control" name="password" placeholder="New Password">
+                                                                </div>
+                                                            </div>
+                                                            <div class="modal-footer">
+                                                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                                                                <button type="submit" class="btn btn-success">Save Changes</button>
+                                                            </div>
+                                                        </form>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        <?php endforeach; ?>
+                                    <?php endif; ?>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
 
-        <div class="col-md-4">
-            <div class="card glass-card shadow-sm border-0 mb-4">
-                <div class="card-header border-0 py-3">
-                    <h5 class="mb-0">System Summary</h5>
-                </div>
-                <div class="card-body">
-                    <ul class="list-group list-group-flush">
-                        <li class="list-group-item d-flex justify-content-between align-items-center bg-transparent">
-                            Total Trunks
-                            <span class="badge bg-primary rounded-pill"><?= count($trunks); ?></span>
-                        </li>
-                        <li class="list-group-item d-flex justify-content-between align-items-center bg-transparent">
-                            Active Calls
-                            <span class="badge bg-success rounded-pill">0</span>
-                        </li>
-                    </ul>
+            <div class="col-lg-4 col-md-12">
+                <div class="card glass-card border-0 shadow-sm h-100">
+                    <div class="card-body p-4">
+                        <h5 class="card-title fw-bold mb-4">System Summary</h5>
+                        <div class="d-flex justify-content-between align-items-center mb-3 p-3 bg-light rounded-3">
+                            <span>Total Trunks</span>
+                            <span class="badge bg-primary px-3 py-2 fs-6 rounded-pill"><?= count($trunks); ?></span>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center mb-3 p-3 bg-light rounded-3">
+                            <span>Active Channels</span>
+                            <span class="badge bg-success px-3 py-2 fs-6 rounded-pill">
+                                <?php
+                                $channelsOutput = shell_exec("fs_cli -x 'show channels count'");
+                                echo preg_replace('/[^0-9]/', '', $channelsOutput) ?: '0';
+                                ?>
+                            </span>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center p-3 bg-light rounded-3">
+                            <span>Engine Status</span>
+                            <span class="text-muted small">
+                                <?php
+                                $verOutput = shell_exec("fs_cli -x 'version'");
+                                echo $verOutput ? substr($verOutput, 0, 25) . '...' : 'Running';
+                                ?>
+                            </span>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
-</div>
 
-<div class="modal fade" id="addTrunkModal" tabindex="-1" aria-labelledby="addTrunkModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="addTrunkModalLabel">Add New Gateway / Trunk</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+    <div class="modal fade" id="addTrunkModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Add New Gateway / Trunk</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <form action="" method="POST">
+                    <input type="hidden" name="action" value="add">
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label class="form-label">Gateway Name</label>
+                            <input type="text" class="form-control" name="name" placeholder="e.g., sip_gw_1" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Realm (IP or Domain)</label>
+                            <input type="text" class="form-control" name="realm" placeholder="192.168.0.5" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Username</label>
+                            <input type="text" class="form-control" name="username" placeholder="User or Auth ID" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Password</label>
+                            <input type="password" class="form-control" name="password" required>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Save Trunk</button>
+                    </div>
+                </form>
             </div>
-            <form action="trunks.php" method="POST">
-                <input type="hidden" name="action" value="add">
-                <div class="modal-body">
-                    <div class="mb-3">
-                        <label class="form-label">Gateway Name</label>
-                        <input type="text" class="form-control" name="name" placeholder="e.g., sip_provider_gw" required>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Realm (IP/Domain)</label>
-                        <input type="text" class="form-control" name="realm" placeholder="192.168.1.100" required>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Username</label>
-                        <input type="text" class="form-control" name="username" placeholder="SIP Username" required>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Password</label>
-                        <input type="password" class="form-control" name="password" placeholder="SIP Password" required>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="submit" class="btn btn-primary">Save Trunk</button>
-                </div>
-            </form>
         </div>
     </div>
-</div>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
