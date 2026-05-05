@@ -13,7 +13,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // FreeSWITCH Gateway XML format
     $xml_output = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<include>\n  <gateway name=\"{$gateway_name}\">\n    <param name=\"username\" value=\"{$username}\"/>\n    <param name=\"realm\" value=\"{$realm}\"/>\n    <param name=\"password\" value=\"{$password}\"/>\n    <param name=\"proxy\" value=\"{$proxy}\"/>\n    <param name=\"register\" value=\"true\"/>\n    <param name=\"retry-seconds\" value=\"30\"/>\n  </gateway>\n</include>";
 
-    $dir = "/usr/local/freeswitch/conf/sip_profiles/external/";
+    $dir = "/etc/freeswitch/sip_profiles/external/";
     
     // Check and create directory if not exists
     if (!is_dir($dir)) {
