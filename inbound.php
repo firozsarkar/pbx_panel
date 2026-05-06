@@ -10,12 +10,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // প্রয়োজনীয় ফিল্ড যাচাই
     if (!empty($did_number) && !empty($extension)) {
 
-        // সঠিক XML স্ট্রাকচার 
+        // আপনার দেওয়া সঠিক XML স্ট্রাকচার 
         $xml_output = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" .
         "<include>\n" .
-        "  <extension name=\"Inbound_{$did_number}\">\n" .
+        "  <extension name=\"Inbound_Calls\">\n" .
         "    <condition field=\"destination_number\" expression=\"^{$did_number}$\">\n" .
-        "      <action application=\"set\" data=\"domain_name=\$\${domain}\"/>\n" .
+        "      <action application=\"set\" data=\"domain_name=\${domain}\"/>\n" .
         "      <action application=\"transfer\" data=\"{$extension} XML default\"/>\n" .
         "    </condition>\n" .
         "  </extension>\n" .
@@ -51,20 +51,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta charset="UTF-8">
     <title>FreeSWITCH Inbound Dialplan Manager</title>
     <style>
-        body { font-family: Arial, sans-serif; background-color: #f4f6f8; padding: 20px; }
-        .container { max-width: 600px; margin: 30px auto; background: #fff; padding: 25px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
-        h2 { text-align: center; color: #333; margin-bottom: 20px; }
+        body { font-family: Arial, sans-serif; background-color: #121212; color: #e0e0e0; padding: 20px; }
+        .container { max-width: 600px; margin: 30px auto; background: #1e1e1e; padding: 25px; border-radius: 8px; box-shadow: 0 4px 15px rgba(212, 175, 55, 0.3); border: 1px solid #d4af37; }
+        h2 { text-align: center; color: #d4af37; margin-bottom: 20px; text-transform: uppercase; letter-spacing: 1px; }
         .form-group { margin-bottom: 15px; }
-        label { display: block; margin-bottom: 6px; font-weight: bold; color: #444; }
-        input { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+        label { display: block; margin-bottom: 6px; font-weight: bold; color: #d4af37; }
+        input { width: 100%; padding: 10px; background-color: #2a2a2a; border: 1px solid #444; color: #e0e0e0; border-radius: 4px; box-sizing: border-box; }
+        input:focus { border-color: #d4af37; outline: none; }
         .buttons-group { display: flex; gap: 10px; margin-top: 20px; }
-        button { flex: 1; padding: 12px; color: white; border: none; border-radius: 4px; font-size: 16px; cursor: pointer; transition: 0.3s; }
-        .btn-save { background-color: #28a745; }
-        .btn-save:hover { background-color: #218838; }
-        .btn-reload { background-color: #007bff; }
-        .btn-reload:hover { background-color: #0069d9; }
-        .alert { padding: 12px; margin-bottom: 20px; border-radius: 4px; background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
-        .error { padding: 12px; margin-bottom: 20px; border-radius: 4px; background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        button { flex: 1; padding: 12px; color: #121212; border: none; border-radius: 4px; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.3s; }
+        .btn-save { background-color: #d4af37; }
+        .btn-save:hover { background-color: #aa8c2c; }
+        .btn-reload { background-color: #00bcd4; color: #121212; }
+        .btn-reload:hover { background-color: #00838f; }
+        .alert { padding: 12px; margin-bottom: 20px; border-radius: 4px; background: rgba(76, 175, 80, 0.2); color: #81c784; border: 1px solid #4caf50; }
+        .error { padding: 12px; margin-bottom: 20px; border-radius: 4px; background: rgba(244, 67, 54, 0.2); color: #e57373; border: 1px solid #f44336; }
     </style>
 </head>
 <body>
@@ -95,6 +96,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </div>
     </form>
 </div>
+
+</body>
+</html>
 
 </body>
 </html>
