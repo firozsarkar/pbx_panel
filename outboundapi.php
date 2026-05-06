@@ -1,100 +1,59 @@
 <?php
-// /var/www/html/outbound.php
+// JSON Output Header
+header('Content-Type: application/json; charset=utf-8');
 
-$json_file = 'extensions.json';
-
-// Initialize the JSON file if it doesn't exist
-if (!file_exists($json_file)) {
-    file_put_contents($json_file, json_encode([
-        "1001" => [
-            "gateway" => "external::09617171305",
-            "client" => "Default Client"
-        ]
-    ], JSON_PRETTY_PRINT));
-}
-
-// Handle API Call via GET
-if (isset($_GET['action']) && $_GET['action'] == 'call') {
-    header('Content-Type: application/json');
-
-    $extension = isset($_GET['ext']) ? trim($_GET['ext']) : '';
-    $destination = isset($_GET['dest']) ? trim($_GET['dest']) : '';
-
-    $data = json_decode(file_get_contents($json_file), true);
-
-    // এক্সটেনশন রেজিস্টার্ড কি না তা যাচাই করা হচ্ছে
-    if (!isset($data[$extension])) {
-        http_response_code(403);
-        echo json_encode(["status" => "error", "message" => "অননুমোদিত অ্যাক্সেস। এক্সটেনশনটি রেজিস্টার্ড নয়।"]);
-        exit;
-    }
-
-    // নির্দিষ্ট এক্সটেনশনের জন্য সংরক্ষিত গেটওয়ে নেওয়া হচ্ছে
-    $gateway = $data[$extension]['gateway'];
-
-    if (empty($destination)) {
-        http_response_code(400);
-        echo json_encode(["status" => "error", "message" => "গন্তব্য নম্বর অনুপস্থিত।"]);
-        exit;
-    }
-
-    // কল রাউটিং: শুধুমাত্র নির্দিষ্ট এক্সটেনশন এবং তার জন্য বরাদ্দকৃত গেটওয়ে ব্যবহার করা হবে
-    $cmd = "fs_cli -x \"originate sofia/internal/{$extension}@vps.hostserverbd.com &bridge(sofia/gateway/{$gateway}/{$destination})\"";
-    $output = shell_exec($cmd);
-
-    if ($output !== null) {
-        echo json_encode([
-            "status" => "success", 
-            "message" => "কল সফলভাবে ইনিশিয়েট করা হয়েছে (গেটওয়ে: {$gateway})।", 
-            "extension" => $extension, 
-            "gateway" => $gateway,
-            "destination" => $destination
-        ]);
-    } else {
-        http_response_code(500);
-        echo json_encode(["status" => "error", "message" => "কল করতে ব্যর্থ হয়েছে।"]);
-    }
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    echo json_encode([
+        'status' => 'error',
+        'message' => 'Invalid request method. Only POST is allowed.'
+    ]);
     exit;
 }
+
+// জাস্ট এই দুটি ইনপুট গ্রহণ করবে
+$extension_name = isset($_POST['extension_name']) ? trim($_POST['extension_name']) : '';
+$gateway_number = isset($_POST['gateway_number']) ? trim($_POST['gateway_number']) : '';
+
+// প্রয়োজনীয় ফিল্ড যাচাই
+if (empty($extension_name) || empty($gateway_number)) {
+    echo json_encode([
+        'status' => 'error',
+        'message' => 'extension_name and gateway_number are required.'
+    ]);
+    exit;
+}
+
+// বাকি সব নিজে থেকেই সেটআপ হবে
+$dir = '/etc/freeswitch/dialplan/public/';
+
+// XML Structure তৈরি
+$xml_output = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<include>\n  <extension name=\"{$extension_name}\">\n    <condition field=\"destination_number\" expression=\"^(\d+)$\">\n      <action application=\"bridge\" data=\"sofia/gateway/external::{$gateway_number}/$1\"/>\n    </condition>\n  </extension>\n</include>";
+
+// ডিরেক্টরি চেক এবং তৈরি করা
+if (!file_exists($dir)) {
+    @mkdir($dir, 0775, true);
+}
+
+// ফাইল পাথ তৈরি: extension_name_gateway_number_outbound.xml
+$file_path = $dir . $extension_name . "_" . $gateway_number . "_outbound.xml";
+
+// ফাইল সেভ করা
+if (@file_put_contents($file_path, $xml_output)) {
+    // অটো FreeSWITCH রিলোড করা
+    $output = shell_exec('fs_cli -x "reloadxml" 2>&1');
+
+    echo json_encode([
+        'status' => 'success',
+        'file_path' => $file_path,
+        'message' => 'ফাইলটি সফলভাবে তৈরি হয়েছে এবং FreeSWITCH রিলোড করা হয়েছে।'
+    ]);
+} else {
+    echo json_encode([
+        'status' => 'error',
+        'message' => 'ফাইলটি সেভ করা যায়নি! ফোল্ডার পারমিশন (Permissions) চেক করুন।'
+    ]);
+}
 ?>
-<!DOCTYPE html>
-<html lang="bn">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VIP PBX Outbound Calling</title>
-    <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body {
-            background-color: #0d0d0d;
-            color: #ffffff;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            padding: 20px;
-        }
-        .container {
-            max-width: 500px;
-            margin: 50px auto;
-            background: #141414;
-            padding: 30px;
-            border-radius: 12px;
-            border: 1px solid #d4af37;
-            box-shadow: 0 0 20px rgba(212, 175, 55, 0.2);
-        }
-        h1 {
-            color: #d4af37;
-            text-align: center;
-            margin-bottom: 25px;
-            text-transform: uppercase;
-            letter-spacing: 2px;
-            font-size: 22px;
-            text-shadow: 0 0 10px rgba(212, 175, 55, 0.5);
-        }
-        label {
-            display: block;
-            margin-bottom: 8px;
-            color: #d4af37;
-            font-size: 13px;
-            text-transform: uppercase;
         }
         input, select {
             width: 100%;
