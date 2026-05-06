@@ -4,7 +4,7 @@ $error = "";
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $extension_name = trim($_POST['extension_name']);
-    $gateway_name = trim($_POST['gateway_name']);
+    $gateway_number = trim($_POST['gateway_number']);
     $dir = trim($_POST['dir']);
 
     // Ensure path ends with slash
@@ -12,15 +12,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $dir .= '/';
     }
 
-    // Dialplan XML format based on user's required structure
-    $xml_output = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<include>\n  <extension name=\"{$extension_name}\">\n    <condition field=\"destination_number\" expression=\"^(\d+)￼1\">\n      <action application=\"bridge\" data=\"sofia/gateway/{$gateway_name}/$1\"/>\n    </condition>\n  </extension>\n</include>";
+    // XML structure based on user's required correct format
+    $xml_output = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<include>\n  <extension name=\"{$extension_name}\">\n    <condition field=\"destination_number\" expression=\"^(\d+)$\">\n      <action application=\"bridge\" data=\"sofia/gateway/external::{$gateway_number}/$1\"/>\n    </condition>\n  </extension>\n</include>";
 
     // Check directory and create if not exists
     if (!file_exists($dir)) {
         @mkdir($dir, 0775, true);
     }
 
-    $file_path = $dir . $extension_name . "_" . $gateway_name . "_outbound.xml";
+    // extension_name_gateway_number_outbound.xml naming convention
+    $file_path = $dir . $extension_name . "_" . $gateway_number . "_outbound.xml";
 
     // Save configuration file
     if (@file_put_contents($file_path, $xml_output)) {
@@ -77,12 +78,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <div class="path-helper">সাধারণত /etc/freeswitch/dialplan/public হয়।</div>
         </div>
         <div class="form-group">
-            <label for="extension_name">Extension Name:</label>
+            <label for="extension_name">Extension Name (e.g., outbound_custom):</label>
             <input type="text" id="extension_name" name="extension_name" placeholder="outbound_custom" required>
         </div>
         <div class="form-group">
-            <label for="gateway_name">Gateway Name:</label>
-            <input type="text" id="gateway_name" name="gateway_name" placeholder="voip_provider_1" required>
+            <label for="gateway_number">Gateway Number (e.g., 09617171305):</label>
+            <input type="text" id="gateway_number" name="gateway_number" placeholder="09617171305" required>
         </div>
         
         <div class="buttons-group">
