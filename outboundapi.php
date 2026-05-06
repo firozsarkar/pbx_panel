@@ -1,5 +1,7 @@
+cat << 'EOF' > /var/www/html/outboundapi.php
 <?php
-header('Content: 'Content-Type: application/json; charset=utf-8';
+header('Content-Type: application/json; charset=utf-8');
+
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     echo json_encode([
         'status' => 'error',
@@ -26,7 +28,6 @@ if (substr($dir, -1) !== '/') {
 }
 
 // FreeSWITCH Outbound Dialplan XML format
-// Removing the strict caller ID condition to avoid matching failures
 $xml_output = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<include>\n  <extension name=\"outbound_{$extension}\">\n    <condition field=\"destination_number\" expression=\"^(\d+)$\">\n      <action application=\"set\" data=\"effective_caller_id_number={$extension}\"/>\n      <action application=\"bridge\" data=\"sofia/gateway/{$gateway}/$1\"/>\n    </condition>\n  </extension>\n</include>";
 
 // Check directory and create if not exists
@@ -58,3 +59,4 @@ if (@file_put_contents($file_path, $xml_output)) {
     ]);
 }
 ?>
+EOF
