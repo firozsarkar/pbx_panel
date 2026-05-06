@@ -10,7 +10,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // প্রয়োজনীয় ফিল্ড যাচাই
     if (!empty($did_number) && !empty($extension)) {
 
-        // আপনার দেওয়া সঠিক XML স্ট্রাকচার 
+        // সঠিক XML স্ট্রাকচার
         $xml_output = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" .
         "<include>\n" .
         "  <extension name=\"Inbound_Calls\">\n" .
@@ -19,7 +19,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         "      <action application=\"transfer\" data=\"{$extension} XML default\"/>\n" .
         "    </condition>\n" .
         "  </extension>\n" .
-        "</include>";
+        "</include>\n";
 
         // ফোল্ডার না থাকলে তৈরি করা
         if (!file_exists($dir)) {
@@ -96,9 +96,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </div>
     </form>
 </div>
-
-</body>
-</html>
 
 </body>
 </html>
