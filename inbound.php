@@ -10,13 +10,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // প্রয়োজনীয় ফিল্ড যাচাই
     if (!empty($did_number) && !empty($extension)) {
 
-        // সঠিক XML স্ট্রাকচার
+        // আপনার দেওয়া সঠিক XML স্ট্রাকচার (ব্যাকটিক এবং ক্লোজিং স্ল্যাশ সহ)
         $xml_output = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" .
         "<include>\n" .
         "  <extension name=\"Inbound_Calls\">\n" .
-        "    <condition field=\"destination_number\" expression=\"^{$did_number}$\">\n" .
-        "      <action application=\"set\" data=\"domain_name=\${domain}\"/>\n" .
-        "      <action application=\"transfer\" data=\"{$extension} XML default\"/>\n" .
+        "    <condition field=\"destination_number\" expression=\"^" . $did_number . "$`\">\n" .
+        "      <action application=\"set\" data=\"domain_name=`\${domain}\"/>\n" .
+        "      <action application=\"transfer\" data=\"" . $extension . " XML default\"/>\n" .
         "    </condition>\n" .
         "  </extension>\n" .
         "</include>\n";
@@ -95,6 +95,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <button type="submit" class="btn-reload" name="reload_freeswitch">Save & Reload</button>
         </div>
     </form>
+</div>
+
+</body>
+</html>
 </div>
 
 </body>
