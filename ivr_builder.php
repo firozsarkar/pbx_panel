@@ -1,137 +1,139 @@
 <?php
 /**
- * Advanced FreeSWITCH IVR XML Generator
- * Target: /etc/freeswitch/ivr_menus/serial_ivr.xml
+ * Advanced FreeSWITCH IVR XML Generator (Unique Serial Mode)
  */
 
-$save_path = "/etc/freeswitch/ivr_menus/serial_ivr.xml";
-$status = "";
+$status_msg = "";
 
 if (isset($_POST['submit_ivr'])) {
-    // ফর্ম ডেটা রিসিভ করা
-    $ivr_name = "serial_ivr"; // আপনার রিকোয়েস্ট অনুযায়ী ফিক্সড নাম
-    $greet_long = $_POST['welcome_msg'];
-    $invalid_sound = $_POST['invalid_msg'];
-    $timeout = $_POST['timeout_sec'] * 1000; // Milliseconds
-    $max_failures = $_POST['max_failures'];
+    // ইউনিক সিরিয়াল তৈরি (উদাহরণ: ivr_1715123456)
+    $unique_id = time(); 
+    $user_name = preg_replace('/[^a-zA-Z0-9]/', '_', $_POST['ivr_name']); // নাম ক্লিন করা
+    $final_ivr_name = $user_name . "_" . $unique_id;
+    
+    $save_directory = "/etc/freeswitch/ivr_menus/";
+    $file_name = $final_ivr_name . ".xml";
+    $full_path = $save_directory . $file_name;
 
-    // XML স্ট্রাকচার শুরু
+    // XML ডাটা তৈরি
     $xml = "<include>\n";
-    $xml .= "  <menu name=\"$ivr_name\"\n";
-    $xml .= "      greet-long=\"$greet_long\"\n";
-    $xml .= "      invalid-sound=\"$invalid_sound\"\n";
-    $xml .= "      timeout=\"$timeout\"\n";
-    $xml .= "      max-failures=\"$max_failures\">\n";
+    $xml .= "  <menu name=\"$final_ivr_name\"\n";
+    $xml .= "      greet-long=\"{$_POST['welcome_msg']}\"\n";
+    $xml .= "      invalid-sound=\"{$_POST['invalid_msg']}\"\n";
+    $xml .= "      timeout=\"" . ($_POST['timeout_sec'] * 1000) . "\"\n";
+    $xml .= "      max-failures=\"{$_POST['max_failures']}\">\n";
 
-    // প্রতিটি ডিজিটের জন্য লজিক তৈরি (0-9)
+    // বাটন ম্যাপিং লজিক
     foreach ($_POST['digit_action'] as $digit => $data) {
         $type = $data['type'];
         $dest = $data['dest'];
 
         if (!empty($type) && !empty($dest)) {
             switch ($type) {
-                case 'extension':
-                    $xml .= "    <entry action=\"menu-exec-app\" digits=\"$digit\" param=\"transfer $dest XML default\"/>\n";
-                    break;
-                case 'queue':
-                    $xml .= "    <entry action=\"menu-exec-app\" digits=\"$digit\" param=\"callcenter $dest\"/>\n";
-                    break;
-                case 'ringgroup':
-                    $xml .= "    <entry action=\"menu-exec-app\" digits=\"$digit\" param=\"transfer $dest XML default\"/>\n";
-                    break;
-                case 'voicemail':
-                    $xml .= "    <entry action=\"menu-exec-app\" digits=\"$digit\" param=\"voicemail default \$${domain} $dest\"/>\n";
-                    break;
-                case 'repeat':
-                    $xml .= "    <entry action=\"menu-top\" digits=\"$digit\"/>\n";
-                    break;
-                case 'disa':
-                    $xml .= "    <entry action=\"menu-exec-app\" digits=\"$digit\" param=\"disa $dest\"/>\n";
-                    break;
+                case 'extension': $xml .= "    <entry action=\"menu-exec-app\" digits=\"$digit\" param=\"transfer $dest XML default\"/>\n"; break;
+                case 'queue':     $xml .= "    <entry action=\"menu-exec-app\" digits=\"$digit\" param=\"callcenter $dest\"/>\n"; break;
+                case 'ringgroup': $xml .= "    <entry action=\"menu-exec-app\" digits=\"$digit\" param=\"transfer $dest XML default\"/>\n"; break;
+                case 'voicemail': $xml .= "    <entry action=\"menu-exec-app\" digits=\"$digit\" param=\"voicemail default \$${domain} $dest\"/>\n"; break;
+                case 'repeat':    $xml .= "    <entry action=\"menu-top\" digits=\"$digit\"/>\n"; break;
+                case 'disa':      $xml .= "    <entry action=\"menu-exec-app\" digits=\"$digit\" param=\"disa $dest\"/>\n"; break;
             }
         }
     }
-
     $xml .= "  </menu>\n";
     $xml .= "</include>";
 
-    // ফাইল সেভ করা
-    if (file_put_contents($save_path, $xml)) {
-        // FreeSWITCH কে রিলোড দেওয়ার কমান্ড (ঐচ্ছিক)
-        shell_exec("fs_cli -x 'reloadxml'");
-        $status = "<div class='alert alert-success'>XML Created Successfully at $save_path and XML Reloaded!</div>";
+    // ফাইল সেভ করা এবং পারমিশন চেক
+    if (file_put_contents($full_path, $xml)) {
+        shell_exec("fs_cli -x 'reloadxml'"); // অটো রিলোড
+        $status_msg = "
+        <div class='alert alert-success shadow'>
+            <h4>✅ IVR Created Successfully!</h4>
+            <hr>
+            <p><strong>IVR Name to use in Inbound:</strong> <span class='badge bg-primary' style='font-size:1.2rem;'>$final_ivr_name</span></p>
+            <p><strong>File Path:</strong> <code>$full_path</code></p>
+            <p class='mb-0'><em>Copy the <b>IVR Name</b> and paste it into your Inbound Route destination.</em></p>
+        </div>";
     } else {
-        $status = "<div class='alert alert-danger'>Error: Cannot write to $save_path. Check Permissions!</div>";
+        $status_msg = "<div class='alert alert-danger'>❌ Error: Permission Denied! Run: <code>chmod 777 $save_directory</code></div>";
     }
 }
 ?>
 
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <title>FreeSWITCH IVR Generator</title>
+    <title>Dynamic IVR Generator</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css">
     <style>
-        body { background: #121212; color: #e0e0e0; padding: 20px; }
-        .card { background: #1e1e1e; border: 1px solid #333; color: white; margin-bottom: 20px; }
-        .form-control, .form-select { background: #2d2d2d; border: 1px solid #444; color: white; }
-        .btn-primary { background: #00adb5; border: none; font-weight: bold; }
-        h2 { color: #00adb5; }
+        body { background: #0f172a; color: #f8fafc; padding: 40px; }
+        .card { background: #1e293b; border: 1px solid #334155; }
+        .form-control, .form-select { background: #0f172a; border: 1px solid #334155; color: white; }
+        .form-control:focus { background: #0f172a; color: white; border-color: #38bdf8; }
+        .digit-table th { color: #38bdf8; }
+        label { font-weight: 500; margin-top: 10px; }
     </style>
 </head>
 <body>
-<div class="container shadow-lg p-4">
-    <h2><i class="bi bi-cpu"></i> Advanced FreeSWITCH IVR Builder</h2>
-    <p class="text-muted">এটি অটোমেটিক <b>serial_ivr.xml</b> ফাইল তৈরি করবে।</p>
-    <hr>
+<div class="container">
+    <h2 class="text-center mb-4">PBX <span style="color:#38bdf8">IVR Builder</span></h2>
     
-    <?php echo $status; ?>
+    <?php echo $status_msg; ?>
 
     <form method="POST">
         <div class="row">
-            <!-- Basic Config -->
-            <div class="col-md-6">
-                <div class="card p-3">
-                    <h5>General Settings</h5>
-                    <label>Welcome Greeting (Full Path)</label>
-                    <input type="text" name="welcome_msg" class="form-control mb-2" placeholder="/usr/share/freeswitch/sounds/custom/welcome.wav" required>
+            <div class="col-md-7">
+                <div class="card p-4 mb-4">
+                    <h5 class="text-info border-bottom pb-2">Main Configurations</h5>
                     
-                    <label>Invalid Input Sound</label>
-                    <input type="text" name="invalid_msg" class="form-control mb-2" placeholder="ivr/ivr-invalid_extension.wav">
-                    
-                    <div class="row">
-                        <div class="col"><label>Timeout (Sec)</label><input type="number" name="timeout_sec" class="form-control" value="5"></div>
-                        <div class="col"><label>Max Retries</label><input type="number" name="max_failures" class="form-control" value="3"></div>
+                    <label>Enter IVR Name (e.g. Sales_Menu)</label>
+                    <input type="text" name="ivr_name" class="form-control" placeholder="Customer_Support" required>
+
+                    <label>Welcome Greeting / Voice Message (Full Path)</label>
+                    <input type="text" name="welcome_msg" class="form-control" placeholder="/usr/share/freeswitch/sounds/custom/welcome.wav" required>
+
+                    <div class="row mt-2">
+                        <div class="col-md-6">
+                            <label>Invalid Input Message</label>
+                            <input type="text" name="invalid_msg" class="form-control" placeholder="ivr/ivr-invalid_extension.wav">
+                        </div>
+                        <div class="col-md-3">
+                            <label>Timeout (Sec)</label>
+                            <input type="number" name="timeout_sec" class="form-control" value="5">
+                        </div>
+                        <div class="col-md-3">
+                            <label>Max Retries</label>
+                            <input type="number" name="max_failures" class="form-control" value="3">
+                        </div>
                     </div>
                 </div>
             </div>
 
-            <!-- Features -->
-            <div class="col-md-6">
-                <div class="card p-3">
-                    <h5>Quick Info (Available Features)</h5>
-                    <ul class="small text-info">
-                        <li>Queue / Ring Group / Follow Me</li>
-                        <li>DISA / Callback / Voicemail</li>
-                        <li>Time Condition (Managed via Dialplan)</li>
-                        <li>Call Recording (Managed via Dialplan)</li>
+            <div class="col-md-5">
+                <div class="card p-4 h-100">
+                    <h5 class="text-warning border-bottom pb-2">Available Features</h5>
+                    <ul class="mt-3">
+                        <li>Queue & Ring Group Support</li>
+                        <li>Extension Transfer & Voicemail</li>
+                        <li>Time Condition Integration</li>
+                        <li>DISA & Callback Ready</li>
+                        <li>Call Recording Auto-Trigger</li>
                     </ul>
+                    <p class="text-muted small italic">Note: Every submission generates a unique file to prevent data loss.</p>
                 </div>
             </div>
         </div>
 
-        <!-- Digit Mapping -->
-        <div class="card p-3">
-            <h5>Digit Mapping & Routing</h5>
-            <table class="table table-dark small">
+        <div class="card p-4 mt-4">
+            <h5 class="text-info border-bottom pb-2">Interactive Menu (Key Press 0-9)</h5>
+            <table class="table table-dark table-hover mt-2 digit-table">
                 <thead>
-                    <tr><th>Digit</th><th>Action Type</th><th>Destination (Extension/Queue/Number)</th></tr>
+                    <tr><th>Button</th><th>Action / Route To</th><th>Destination (Number/ID)</th></tr>
                 </thead>
                 <tbody>
                     <?php 
                     $options = [
-                        'extension' => 'Transfer to Extension',
-                        'queue'     => 'Send to Queue',
+                        'extension' => 'Extension Transfer',
+                        'queue'     => 'Call Queue',
                         'ringgroup' => 'Ring Group',
                         'voicemail' => 'Voicemail',
                         'disa'      => 'DISA Access',
@@ -139,21 +141,20 @@ if (isset($_POST['submit_ivr'])) {
                     ];
                     for($i=0; $i<=9; $i++): ?>
                     <tr>
-                        <td><strong>Button <?= $i ?></strong></td>
+                        <td><span class="badge bg-secondary p-2">Digit <?= $i ?></span></td>
                         <td>
-                            <select name="digit_action[<?= $i ?>][type]" class="form-select form-select-sm">
+                            <select name="digit_action[<?= $i ?>][type]" class="form-select">
                                 <option value="">-- No Action --</option>
-                                <?php foreach($options as $val => $label) echo "<option value='$val'>$label</option>"; ?>
+                                <?php foreach($options as $k => $v) echo "<option value='$k'>$v</option>"; ?>
                             </select>
                         </td>
-                        <td><input type="text" name="digit_action[<?= $i ?>][dest]" class="form-control form-control-sm" placeholder="Target"></td>
+                        <td><input type="text" name="digit_action[<?= $i ?>][dest]" class="form-control" placeholder="e.g. 101 or support_q"></td>
                     </tr>
                     <?php endfor; ?>
                 </tbody>
             </table>
+            <button type="submit" name="submit_ivr" class="btn btn-primary btn-lg mt-3 w-100">GENERATE IVR FILE</button>
         </div>
-
-        <button type="submit" name="submit_ivr" class="btn btn-primary w-100 p-3 mt-3">CREATE XML & SUBMIT</button>
     </form>
 </div>
 </body>
