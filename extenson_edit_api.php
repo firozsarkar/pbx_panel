@@ -1,70 +1,81 @@
 <?php
-// এরর দেখার জন্য সাময়িকভাবে এটি অন রাখুন
-ini_set('display_errors', 1);
-ini_set('display_startup_errors', 1);
-error_reporting(E_ALL);
+header('Content-Type: application/json; charset=utf-8');
 
-header('Content-Type: application/json');
-
-$dir = "/etc/freeswitch/directory/default/";
-
-$ext         = $_POST['extension'] ?? '';
-$password    = $_POST['password'] ?? '';
-$forward_num = $_POST['call_forward_mobile'] ?? '';
-$on_busy     = $_POST['on_busy_option'] ?? 'hangup';
-$on_offline  = $_POST['on_offline_option'] ?? 'hangup';
-
-if (empty($ext)) {
-    echo json_encode(["status" => "error", "message" => "Extension missing"]);
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    echo json_encode([
+        'status' => 'error',
+        'message' => 'Invalid request method. Only POST is allowed.'
+    ]);
     exit;
 }
 
-$file_path = $dir . $ext . ".xml";
+// ইনপুট ডেটা গ্রহণ
+$extension   = trim($_POST['extension'] ?? '');
+$password    = trim($_POST['password'] ?? '');
+$vm_password = trim($_POST['vm_password'] ?? '1234');
+$forward_num = trim($_POST['call_forward_mobile'] ?? '');
+$on_busy     = trim($_POST['on_busy_option'] ?? 'hangup');
+$on_offline  = trim($_POST['on_offline_option'] ?? 'hangup');
+$dir         = trim($_POST['dir'] ?? '/etc/freeswitch/directory/default');
 
-if (!file_exists($file_path)) {
-    echo json_encode(["status" => "error", "message" => "File not found: $file_path"]);
+// এক্সটেনশন এবং পাসওয়ার্ড বাধ্যতামূলক
+if (empty($extension) || empty($password)) {
+    echo json_encode([
+        'status' => 'error',
+        'message' => 'এক্সটেনশন এবং পাসওয়ার্ড অবশ্যই দিতে হবে।'
+    ]);
     exit;
 }
 
-// XML লোড করা
-$xml = @simplexml_load_file($file_path);
-if (!$xml) {
-    echo json_encode(["status" => "error", "message" => "XML Parse Error. Permission or format issue."]);
-    exit;
+if (substr($dir, -1) !== '/') { $dir .= '/'; }
+$file_path = $dir . $extension . ".xml";
+
+// XML ফরম্যাট তৈরি (এডিট/আপডেট স্টাইল)
+// এখানে variables সেকশনে আপনার দেওয়া কল ফরওয়ার্ডিং অপশনগুলো যোগ করা হয়েছে
+$xml_output = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
+$xml_output .= "<include>\n";
+$xml_output .= "  <user id=\"{$extension}\">\n";
+$xml_output .= "    <params>\n";
+$xml_output .= "      <param name=\"password\" value=\"{$password}\"/>\n";
+$xml_output .= "      <param name=\"vm-password\" value=\"{$vm_password}\"/>\n";
+$xml_output .= "    </params>\n";
+$xml_output .= "    <variables>\n";
+$xml_output .= "      <variable name=\"toll_allow\" value=\"domestic,international,local\"/>\n";
+$xml_output .= "      <variable name=\"accountcode\" value=\"{$extension}\"/>\n";
+$xml_output .= "      <variable name=\"user_context\" value=\"default\"/>\n";
+$xml_output .= "      <variable name=\"call_forward_mobile\" value=\"{$forward_num}\"/>\n";
+$xml_output .= "      <variable name=\"on_busy_option\" value=\"{$on_busy}\"/>\n";
+$xml_output .= "      <variable name=\"on_offline_option\" value=\"{$on_offline}\"/>\n";
+$xml_output .= "    </variables>\n";
+$xml_output .= "  </user>\n";
+$xml_output .= "</include>";
+
+// ডিরেক্টরি চেক
+if (!file_exists($dir)) {
+    @mkdir($dir, 0775, true);
 }
 
-// পাসওয়ার্ড আপডেট
-if(isset($xml->user->params->param)) {
-    foreach ($xml->user->params->param as $param) {
-        if ((string)$param['name'] === 'password') {
-            $param['value'] = $password;
-        }
+// ফাইল সেভ করা (এটি আগের ফাইল থাকলে তার ওপর ওভাররাইট করবে অর্থাৎ আপডেট হবে)
+if (@file_put_contents($file_path, $xml_output)) {
+    $message = "এক্সটেনশন {$extension} সফলভাবে আপডেট হয়েছে!";
+    
+    // FreeSWITCH রিলোড
+    $reload_output = "";
+    if (isset($_POST['reload_freeswitch']) || true) { // ডিফল্টভাবে রিলোড হবে
+        $reload_output = shell_exec('fs_cli -x "reloadxml" 2>&1');
+        $message .= " (FreeSWITCH Reloaded)";
     }
-}
 
-// ভেরিয়েবল আপডেট
-if (!isset($xml->user->variables)) {
-    $xml->user->addChild('variables');
-}
-unset($xml->user->variables->variable); 
-
-$vars = [
-    'call_forward_mobile' => $forward_num,
-    'on_busy_option'      => $on_busy,
-    'on_offline_option'   => $on_offline
-];
-
-foreach ($vars as $name => $value) {
-    $v = $xml->user->variables->addChild('variable');
-    $v->addAttribute('name', $name);
-    $v->addAttribute('value', $value);
-}
-
-// ফাইল সেভ করা
-if ($xml->asXML($file_path)) {
-    // রিলোড কমান্ড - নিশ্চিত করুন fs_cli ইন্সটল আছে
-    @shell_exec("fs_cli -x 'reloadxml' 2>&1");
-    echo json_encode(["status" => "success", "message" => "Extension $ext updated successfully"]);
+    echo json_encode([
+        'status' => 'success',
+        'message' => $message,
+        'file' => $file_path,
+        'reload_log' => $reload_output
+    ]);
 } else {
-    echo json_encode(["status" => "error", "message" => "Could not save XML. Check write permissions on $file_path"]);
+    echo json_encode([
+        'status' => 'error',
+        'message' => 'ফাইল রাইট করা যায়নি। পারমিশন চেক করুন: chown www-data:www-data ' . $dir
+    ]);
 }
+?>
