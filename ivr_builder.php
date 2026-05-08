@@ -1,13 +1,14 @@
 <?php
 /**
- * Advanced FreeSWITCH IVR XML Generator (Unique Serial Mode)
- * Improved & Beautified Version
+ * Advanced FreeSWITCH IVR XML Generator
+ * Beautiful & Professional Version
  */
 
 $status_msg = "";
 
 if (isset($_POST['submit_ivr'])) {
     
+    // Unique IVR Name Generation
     $unique_id = time();
     $user_name = preg_replace('/[^a-zA-Z0-9_]/', '_', trim($_POST['ivr_name']));
     $final_ivr_name = $user_name . "_" . $unique_id;
@@ -16,7 +17,7 @@ if (isset($_POST['submit_ivr'])) {
     $file_name = $final_ivr_name . ".xml";
     $full_path = $save_directory . $file_name;
 
-    // XML Generation
+    // XML Content Generation
     $xml = "<include>\n";
     $xml .= "  <menu name=\"{$final_ivr_name}\"\n";
     $xml .= "        greet-long=\"{$_POST['welcome_msg']}\"\n";
@@ -28,7 +29,7 @@ if (isset($_POST['submit_ivr'])) {
         $type = $data['type'] ?? '';
         $dest = trim($data['dest'] ?? '');
 
-        if (!empty($type) && !empty($dest)) {
+        if (!empty($type) && !empty($dest) || $type === 'repeat') {
             switch ($type) {
                 case 'extension':
                     $xml .= "    <entry action=\"menu-exec-app\" digits=\"$digit\" param=\"transfer $dest XML default\"/>\n";
@@ -55,20 +56,20 @@ if (isset($_POST['submit_ivr'])) {
     $xml .= "  </menu>\n";
     $xml .= "</include>";
 
-    // Save file
+    // Save File
     if (file_put_contents($full_path, $xml)) {
-        shell_exec("fs_cli -x 'reloadxml' 2>/dev/null");
+        @shell_exec("fs_cli -x 'reloadxml' 2>/dev/null");
         
         $status_msg = "
-        <div class='alert alert-success shadow-lg border-0'>
-            <h4 class='mb-3'><i class='bi bi-check-circle-fill'></i> IVR Created Successfully!</h4>
-            <p><strong>IVR Name:</strong> <span class='badge bg-primary fs-5'>$final_ivr_name</span></p>
-            <p><strong>File Path:</strong> <code class='text-light'>$full_path</code></p>
+        <div class='alert alert-success shadow-lg'>
+            <h4><i class='bi bi-check-circle-fill'></i> IVR সফলভাবে তৈরি হয়েছে!</h4>
             <hr>
-            <p class='mb-0'><em>উপরের <b>IVR Name</b> কপি করে Inbound Route-এ Destination হিসেবে ব্যবহার করুন।</em></p>
+            <p><strong>IVR Name:</strong> <span class='badge bg-primary fs-5'>$final_ivr_name</span></p>
+            <p><strong>File Path:</strong> <code>$full_path</code></p>
+            <p class='mb-0'><strong>নোট:</strong> উপরের IVR Name কপি করে Inbound Route এ Destination হিসেবে ব্যবহার করুন।</p>
         </div>";
     } else {
-        $status_msg = "<div class='alert alert-danger shadow'><strong>❌ Error:</strong> Permission Denied!<br>Run: <code>chmod 777 $save_directory</code></div>";
+        $status_msg = "<div class='alert alert-danger'>❌ ফাইল সেভ করতে সমস্যা হয়েছে!<br>চালান: <code>chmod 777 $save_directory</code></div>";
     }
 }
 ?>
@@ -78,100 +79,90 @@ if (isset($_POST['submit_ivr'])) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FreeSWITCH IVR Builder</title>
+    <title>FreeSWITCH Dynamic IVR Builder</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.3/css/bootstrap.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.11.3/font/bootstrap-icons.min.css">
     <style>
         body {
             background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-            color: #f8fafc;
+            color: #f1f5f9;
             min-height: 100vh;
-            padding: 40px 0;
+            padding: 30px 0;
         }
         .card {
             background: #1e293b;
             border: 1px solid #334155;
-            border-radius: 16px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            border-radius: 15px;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.4);
         }
         .form-control, .form-select {
             background: #0f172a;
             border: 1px solid #475569;
             color: white;
-            border-radius: 10px;
         }
         .form-control:focus, .form-select:focus {
-            background: #0f172a;
             border-color: #38bdf8;
-            box-shadow: 0 0 0 0.2rem rgba(56, 189, 248, 0.25);
+            box-shadow: 0 0 0 0.25rem rgba(56, 189, 248, 0.2);
             color: white;
         }
         .digit-table th {
             color: #38bdf8;
-            font-weight: 600;
-        }
-        .badge {
-            font-size: 1rem;
         }
         h2 span {
             color: #38bdf8;
             font-weight: 700;
         }
         .btn-primary {
-            background: linear-gradient(90deg, #38bdf8, #0ea5e9);
+            background: linear-gradient(to right, #38bdf8, #0284c8);
             border: none;
-            padding: 14px;
-            font-size: 1.1rem;
+            padding: 14px 0;
+            font-size: 1.15rem;
             font-weight: 600;
-            border-radius: 12px;
-        }
-        .alert {
-            border-radius: 12px;
         }
     </style>
 </head>
 <body>
 <div class="container">
 
-    <h2 class="text-center mb-5 display-5">
-        <i class="bi bi-telephone-fill"></i> PBX <span>IVR Builder</span>
+    <h2 class="text-center mb-5">
+        <i class="bi bi-telephone-inbound-fill"></i> PBX <span>IVR Builder</span>
     </h2>
 
     <?php echo $status_msg; ?>
 
     <form method="POST">
         <div class="row g-4">
-            
-            <!-- Main Configuration -->
+
+            <!-- Main Settings -->
             <div class="col-lg-7">
                 <div class="card p-4">
                     <h5 class="text-info border-bottom pb-3 mb-4">
-                        <i class="bi bi-gear-fill"></i> Main Configurations
+                        <i class="bi bi-gear-fill"></i> মূল সেটিংস
                     </h5>
                     
                     <div class="mb-3">
-                        <label class="form-label fw-semibold">IVR Name (e.g. Sales_Menu)</label>
-                        <input type="text" name="ivr_name" class="form-control" placeholder="Customer_Support" required>
+                        <label class="form-label fw-bold">IVR নাম দিন</label>
+                        <input type="text" name="ivr_name" class="form-control" placeholder="Sales_IVR" required>
                     </div>
 
                     <div class="mb-3">
-                        <label class="form-label fw-semibold">Welcome Greeting (Full Path)</label>
+                        <label class="form-label fw-bold">Welcome Message (Full Path)</label>
                         <input type="text" name="welcome_msg" class="form-control" 
                                placeholder="/usr/share/freeswitch/sounds/custom/welcome.wav" required>
                     </div>
 
                     <div class="row">
                         <div class="col-md-6 mb-3">
-                            <label class="form-label fw-semibold">Invalid Input Message</label>
+                            <label class="form-label fw-bold">Invalid Message</label>
                             <input type="text" name="invalid_msg" class="form-control" 
                                    placeholder="ivr/ivr-invalid_extension.wav">
                         </div>
                         <div class="col-md-3 mb-3">
-                            <label class="form-label fw-semibold">Timeout (Seconds)</label>
+                            <label class="form-label fw-bold">Timeout (সেকেন্ড)</label>
                             <input type="number" name="timeout_sec" class="form-control" value="5" min="1">
                         </div>
                         <div class="col-md-3 mb-3">
-                            <label class="form-label fw-semibold">Max Retries</label>
+                            <label class="form-label fw-bold">Max Retries</label>
                             <input type="number" name="max_failures" class="form-control" value="3" min="1">
                         </div>
                     </div>
@@ -182,35 +173,31 @@ if (isset($_POST['submit_ivr'])) {
             <div class="col-lg-5">
                 <div class="card p-4 h-100">
                     <h5 class="text-warning border-bottom pb-3 mb-4">
-                        <i class="bi bi-star-fill"></i> Available Features
+                        <i class="bi bi-lightbulb-fill"></i> সুবিধাসমূহ
                     </h5>
-                    <ul class="list-unstyled mt-2">
-                        <li class="mb-2"><i class="bi bi-check-circle text-success"></i> Queue & Ring Group Support</li>
-                        <li class="mb-2"><i class="bi bi-check-circle text-success"></i> Extension Transfer & Voicemail</li>
-                        <li class="mb-2"><i class="bi bi-check-circle text-success"></i> Time Condition Ready</li>
-                        <li class="mb-2"><i class="bi bi-check-circle text-success"></i> DISA & Callback Support</li>
-                        <li class="mb-2"><i class="bi bi-check-circle text-success"></i> Auto Call Recording</li>
+                    <ul class="list-unstyled">
+                        <li class="mb-2"><i class="bi bi-check-circle text-success"></i> Extension, Queue, Ring Group</li>
+                        <li class="mb-2"><i class="bi bi-check-circle text-success"></i> Voicemail Support</li>
+                        <li class="mb-2"><i class="bi bi-check-circle text-success"></i> DISA Support</li>
+                        <li class="mb-2"><i class="bi bi-check-circle text-success"></i> Repeat Menu</li>
                     </ul>
-                    <p class="text-muted small mt-auto">
-                        <em>প্রতিবার নতুন করে ফাইল তৈরি হয় — ডেটা লসের ভয় নেই।</em>
-                    </p>
                 </div>
             </div>
 
         </div>
 
-        <!-- Digit Mapping -->
+        <!-- Digit Menu -->
         <div class="card p-4 mt-4">
             <h5 class="text-info border-bottom pb-3 mb-4">
-                <i class="bi bi-grid-3x3-gap"></i> Interactive Menu (Key Press 0-9)
+                <i class="bi bi-grid-fill"></i> ডিজিট ম্যাপিং (০-৯)
             </h5>
 
-            <table class="table table-dark table-hover digit-table align-middle">
+            <table class="table table-dark table-hover digit-table">
                 <thead>
                     <tr>
-                        <th width="15%">Button</th>
-                        <th width="40%">Action</th>
-                        <th>Destination (Number / ID)</th>
+                        <th width="15%">বাটন</th>
+                        <th width="40%">অ্যাকশন</th>
+                        <th>গন্তব্য (Destination)</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -220,18 +207,16 @@ if (isset($_POST['submit_ivr'])) {
                         'queue'     => 'Call Queue',
                         'ringgroup' => 'Ring Group',
                         'voicemail' => 'Voicemail',
-                        'disa'      => 'DISA Access',
+                        'disa'      => 'DISA',
                         'repeat'    => 'Repeat Menu'
                     ];
 
                     for($i = 0; $i <= 9; $i++): ?>
                     <tr>
-                        <td>
-                            <span class="badge bg-secondary fs-5 px-3 py-2">Digit <?= $i ?></span>
-                        </td>
+                        <td><span class="badge bg-secondary fs-5 px-3 py-2">Digit <?= $i ?></span></td>
                         <td>
                             <select name="digit_action[<?= $i ?>][type]" class="form-select">
-                                <option value="">-- No Action --</option>
+                                <option value="">-- Select Action --</option>
                                 <?php foreach($options as $k => $v): ?>
                                     <option value="<?= $k ?>"><?= $v ?></option>
                                 <?php endforeach; ?>
@@ -239,7 +224,7 @@ if (isset($_POST['submit_ivr'])) {
                         </td>
                         <td>
                             <input type="text" name="digit_action[<?= $i ?>][dest]" 
-                                   class="form-control" placeholder="e.g. 101 or support_queue">
+                                   class="form-control" placeholder="101 অথবা sales_queue">
                         </td>
                     </tr>
                     <?php endfor; ?>
@@ -247,7 +232,7 @@ if (isset($_POST['submit_ivr'])) {
             </table>
 
             <button type="submit" name="submit_ivr" class="btn btn-primary btn-lg w-100 mt-4">
-                <i class="bi bi-file-earmark-code"></i> GENERATE IVR FILE
+                <i class="bi bi-file-earmark-arrow-down"></i> IVR ফাইল তৈরি করুন
             </button>
         </div>
     </form>
