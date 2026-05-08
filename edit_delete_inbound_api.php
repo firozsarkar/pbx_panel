@@ -1,21 +1,12 @@
 <?php
-// ==================== FreeSWITCH Inbound Edit & Delete API for WHMCS ====================
+// ==================== FreeSWITCH Inbound Edit & Delete API (No API Key) ====================
 
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: POST');
-header('Access-Control-Allow-Headers: Content-Type, Authorization');
+header('Access-Control-Allow-Headers: Content-Type');
 
 $dir = '/etc/freeswitch/dialplan/public/';
-
-// ==================== SECURITY ====================
-$API_KEY = 'YOUR_SECURE_API_KEY_HERE';   // ← অবশ্যই পরিবর্তন করুন
-
-if (!isset($_SERVER['HTTP_X_API_KEY']) || $_SERVER['HTTP_X_API_KEY'] !== $API_KEY) {
-    http_response_code(401);
-    echo json_encode(['status' => 'error', 'message' => 'Invalid API Key']);
-    exit;
-}
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
@@ -26,8 +17,6 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 $input = json_decode(file_get_contents('php://input'), true);
 $action = trim($input['action'] ?? '');   // list | edit | delete
 
-$response = [];
-
 // ====================== LIST ALL INBOUND ======================
 if ($action === 'list') {
     $files = glob($dir . "01_inbound_*.xml");
@@ -35,6 +24,7 @@ if ($action === 'list') {
 
     foreach ($files as $file) {
         $content = file_get_contents($file);
+        
         preg_match('/destination_number" expression="\^(.+?)\$/', $content, $did_match);
         preg_match('/name="Inbound_(.+?)"/', $content, $name_match);
         
@@ -90,13 +80,13 @@ elseif ($action === 'delete') {
             shell_exec('fs_cli -x "reloadxml" 2>&1');
             echo json_encode([
                 'status'  => 'success',
-                'message' => "Inbound route for DID {$did_number} deleted successfully"
+                'message' => "Inbound route for DID {$did_number} has been deleted successfully"
             ]);
         } else {
             echo json_encode(['status' => 'error', 'message' => 'Failed to delete file']);
         }
     } else {
-        echo json_encode(['status' => 'error', 'message' => 'File not found']);
+        echo json_encode(['status' => 'error', 'message' => 'File not found for this DID']);
     }
     exit;
 }
@@ -119,11 +109,11 @@ elseif ($action === 'edit') {
 
     if (!file_exists($file_path)) {
         http_response_code(404);
-        echo json_encode(['status' => 'error', 'message' => 'Inbound route not found']);
+        echo json_encode(['status' => 'error', 'message' => 'Inbound route not found for this DID']);
         exit;
     }
 
-    // Generate new XML
+    // Generate Updated XML
     $xml = '<?xml version="1.0" encoding="UTF-8"?>' . "\n" .
            '<include>' . "\n" .
            '  <extension name="Inbound_' . preg_replace('/[^0-9A-Za-z]/', '', $did_number) . '">' . "\n" .
@@ -141,6 +131,9 @@ elseif ($action === 'edit') {
         $xml .= '      <action application="transfer" data="' . $destination . ' XML default"/>' . "\n";
     } elseif ($transfer_type === 'ringgroup') {
         $xml .= '      <action application="bridge" data="user/' . $destination . '@$${domain}"/>' . "\n";
+    } else {
+        echo json_encode(['status' => 'error', 'message' => 'Invalid transfer_type']);
+        exit;
     }
 
     $xml .= '    </condition>' . "\n" .
@@ -158,7 +151,7 @@ elseif ($action === 'edit') {
         ]);
     } else {
         http_response_code(500);
-        echo json_encode(['status' => 'error', 'message' => 'Failed to update file']);
+        echo json_encode(['status' => 'error', 'message' => 'Failed to save updated file']);
     }
     exit;
 }
@@ -166,6 +159,6 @@ elseif ($action === 'edit') {
 // Invalid Action
 else {
     http_response_code(400);
-    echo json_encode(['status' => 'error', 'message' => 'Invalid action. Use: list, edit, delete']);
+    echo json_encode(['status' => 'error', 'message' => 'Invalid action. Allowed actions: list, edit, delete']);
 }
 ?>
