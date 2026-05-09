@@ -1,6 +1,7 @@
 <?php
 header('Content-Type: application/json; charset=utf-8');
 
+// শুধুমাত্র POST রিকোয়েস্ট গ্রহণ করবে
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     echo json_encode([
         'status' => 'error',
@@ -9,53 +10,80 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
-$extension = trim($_POST['extension'] ?? '');
+// ইনপুট ভ্যালুগুলো সংগ্রহ করা
+$user_id = trim($_POST['user_id'] ?? '');
 $password = trim($_POST['password'] ?? '');
 $vm_password = trim($_POST['vm_password'] ?? '');
+$user_context = trim($_POST['user_context'] ?? '');
+$effective_caller_id_name = trim($_POST['effective_caller_id_name'] ?? '');
+$effective_caller_id_number = trim($_POST['effective_caller_id_number'] ?? '');
+$outbound_caller_id_name = trim($_POST['outbound_caller_id_name'] ?? '');
+$outbound_caller_id_number = trim($_POST['outbound_caller_id_number'] ?? '');
+
 $dir = trim($_POST['dir'] ?? '/etc/freeswitch/directory/default');
 
-if (empty($extension) || empty($password)) {
+// প্রয়োজনীয় ফিল্ডগুলো চেক করা
+if (empty($user_id) || empty($password) || empty($user_context)) {
     echo json_encode([
         'status' => 'error',
-        'message' => 'Please provide all required fields: extension, password.'
+        'message' => 'Required fields missing: user_id, password, and user_context are mandatory.'
     ]);
     exit;
 }
 
-// Ensure path ends with slash
+// ডিরেক্টরি পাথ ঠিক করা
 if (substr($dir, -1) !== '/') {
     $dir .= '/';
 }
 
-// FreeSWITCH Directory/Extension XML format
-$xml_output = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<include>\n  <user id=\"{$extension}\">\n    <params>\n      <param name=\"password\" value=\"{$password}\"/>\n      <param name=\"vm-password\" value=\"{$vm_password}\"/>\n    </params>\n    <variables>\n      <param name=\"toll_allow\" value=\"domestic,international,local\"/>\n      <param name=\"accountcode\" value=\"{$extension}\"/>\n      <param name=\"user_context\" value=\"default\"/>\n    </variables>\n  </user>\n</include>";
+// আপনার দেওয়া ফরম্যাট অনুযায়ী XML তৈরি
+$xml_output = "<include>\n";
+$xml_output .= "  <user id=\"{$user_id}\">\n";
+$xml_output .= "    <params>\n";
+$xml_output .= "      <param name=\"password\" value=\"{$password}\"/>\n";
+$xml_output .= "      <param name=\"vm-password\" value=\"{$vm_password}\"/>\n";
+$xml_output .= "    </params>\n";
+$xml_output .= "    <variables>\n";
+$xml_output .= "      <param name=\"user_context\" value=\"{$user_context}\"/>\n";
+$xml_output .= "      <param name=\"effective_caller_id_name\" value=\"{$effective_caller_id_name}\"/>\n";
+$xml_output .= "      <param name=\"effective_caller_id_number\" value=\"{$effective_caller_id_number}\"/>\n";
+$xml_output .= "      <param name=\"outbound_caller_id_name\" value=\"{$outbound_caller_id_name}\"/>\n";
+$xml_output .= "      <param name=\"outbound_caller_id_number\" value=\"{$outbound_caller_id_number}\"/>\n";
+$xml_output .= "\n";
+$xml_output .= "      <param name=\"toll_allow\" value=\"domestic,international,local\"/>\n";
+$xml_output .= "      <param name=\"accountcode\" value=\"{$user_id}\"/>\n";
+$xml_output .= "    </variables>\n";
+$xml_output .= "  </user>\n";
+$xml_output .= "</include>";
 
-// Check directory and create if not exists
+// ডিরেক্টরি না থাকলে তৈরি করা
 if (!file_exists($dir)) {
     @mkdir($dir, 0775, true);
 }
 
-$file_path = $dir . $extension . ".xml";
+$file_path = $dir . $user_id . ".xml";
 
-// Save configuration file
+// ফাইল সেভ করা
 if (@file_put_contents($file_path, $xml_output)) {
-    $message = "সফলভাবে ফাইলটি '{$file_path}'-এ তৈরি হয়েছে!";
+    $message = "সফলভাবে ইউজার {$user_id} এর ফাইল তৈরি হয়েছে।";
     
     $reload_output = "";
     if (isset($_POST['reload_freeswitch'])) {
+        // FreeSWITCH রিলোড কমান্ড
         $reload_output = shell_exec('fs_cli -x "reloadxml" 2>&1');
-        $message .= " (FreeSWITCH রিলোড করা হয়েছে)";
+        $message .= " এবং FreeSWITCH রিলোড করা হয়েছে।";
     }
 
     echo json_encode([
         'status' => 'success',
         'message' => $message,
-        'reload_output' => $reload_output
+        'file' => $file_path,
+        'reload_info' => $reload_output
     ]);
 } else {
     echo json_encode([
         'status' => 'error',
-        'message' => 'ফাইলটি সেভ করা যায়নি! ফোল্ডার পারমিশন (Permissions) চেক করুন।'
+        'message' => 'ফাইল রাইট করা সম্ভব হয়নি। পারমিশন চেক করুন।'
     ]);
 }
 ?>
