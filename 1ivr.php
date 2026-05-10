@@ -17,7 +17,7 @@ $timeout        = isset($data['timeout_sec']) ? (int)$data['timeout_sec'] * 1000
 $max_failures   = isset($data['max_failures']) ? (int)$data['max_failures'] : 3;
 $digit_actions  = $data['digit_actions'] ?? [];
 
-// ==================== XML ====================
+// ==================== XML তৈরি ====================
 $xml = "<include>\n";
 $xml .= "  <menu name=\"{$ivr_name}\"\n";
 $xml .= "        greet-long=\"{$welcome_msg}\"\n";
@@ -47,8 +47,8 @@ foreach ($digit_actions as $digit => $action) {
             $gateway = trim($action['gateway'] ?? '09617401201');
             
             if (!empty($action['codec']) && strtoupper($action['codec']) === 'G729') {
-                // Final Strong Attempt
-                $param = "bridge {bypass_media=true,proxy_media=true,rtp_use_codec_string=G729,absolute_codec_string=G729,passthrough=true,media_mix_freq=8000}sofia/gateway/{$gateway}/{$dest}";
+                // সবচেয়ে শক্তিশালী কম্বিনেশন
+                $param = "bridge {bypass_media=true,proxy_media=true,rtp_use_codec_string=G729,absolute_codec_string=G729,passthrough=true,inherit_codec=true,media_mix_freq=8000}sofia/gateway/{$gateway}/{$dest}";
             } else {
                 $param = "bridge sofia/gateway/{$gateway}/{$dest}";
             }
@@ -74,7 +74,7 @@ foreach ($digit_actions as $digit => $action) {
 $xml .= "  </menu>\n";
 $xml .= "</include>";
 
-// সেভ
+// সেভ ও রিলোড
 $file_path = "/etc/freeswitch/ivr_menus/{$ivr_name}.xml";
 if (!is_dir('/etc/freeswitch/ivr_menus')) {
     mkdir('/etc/freeswitch/ivr_menus', 0777, true);
@@ -85,7 +85,7 @@ if (file_put_contents($file_path, $xml)) {
     echo json_encode([
         'success'  => true,
         'ivr_name' => $ivr_name,
-        'message'  => 'IVR Created with bypass_media + proxy_media'
+        'message'  => 'IVR Created - Strongest G729 Settings'
     ]);
 } else {
     echo json_encode(['success' => false, 'message' => 'Failed to save file']);
