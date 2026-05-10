@@ -10,7 +10,7 @@ if (!$data || empty($data['ivr_name'])) {
 }
 
 $ivr_name       = preg_replace('/[^a-zA-Z0-9_]/', '', $data['ivr_name']) . '_' . time();
-$welcome_msg    = $data['welcome_msg'] ?? '/usr/share/freeswitch/sounds/en/us/callie/custom/7_host1.wav';
+$welcome_msg    = $data['welcome_msg'] ?? '/usr/share/freeswitch/sounds/en/us/callie/custom/1_host1.wav';
 $invalid_msg    = $data['invalid_msg'] ?? 'ivr/ivr-invalid_entry.wav';
 $exit_msg       = $data['exit_msg'] ?? 'voicemail/vm-goodbye.wav';
 $timeout        = isset($data['timeout_sec']) ? (int)$data['timeout_sec'] * 1000 : 10000;
@@ -45,16 +45,15 @@ foreach ($digit_actions as $digit => $action) {
 
         case 'direct_number':
             $gateway = trim($action['gateway'] ?? '09617401201');
-            $bridge_str = "bridge ";
-
+            
             if (!empty($action['codec']) && strtoupper($action['codec']) === 'G729') {
-                // সবচেয়ে কার্যকর G729 passthrough সিনট্যাক্স
-                $bridge_str .= "{absolute_codec_string=G729,rtp_use_codec_string=G729,passthrough=true,inherit_codec=true}sofia/gateway/{$gateway}/{$dest}";
+                // সবচেয়ে শক্তিশালী G729 Passthrough
+                $param = "bridge {bypass_media=true,rtp_use_codec_string=G729,absolute_codec_string=G729,passthrough=true,inherit_codec=true}sofia/gateway/{$gateway}/{$dest}";
             } else {
-                $bridge_str .= "sofia/gateway/{$gateway}/{$dest}";
+                $param = "bridge sofia/gateway/{$gateway}/{$dest}";
             }
 
-            $xml .= "    <entry action=\"menu-exec-app\" digits=\"{$digit}\" param=\"{$bridge_str}\"/>\n";
+            $xml .= "    <entry action=\"menu-exec-app\" digits=\"{$digit}\" param=\"{$param}\"/>\n";
             break;
 
         case 'ivr':
@@ -75,11 +74,10 @@ foreach ($digit_actions as $digit => $action) {
 $xml .= "  </menu>\n";
 $xml .= "</include>";
 
-// ==================== সেভ ও রিলোড ====================
+// সেভ
 $file_path = "/etc/freeswitch/ivr_menus/{$ivr_name}.xml";
-
-if (!is_dir(dirname($file_path))) {
-    mkdir(dirname($file_path), 0777, true);
+if (!is_dir('/etc/freeswitch/ivr_menus')) {
+    mkdir('/etc/freeswitch/ivr_menus', 0777, true);
 }
 
 if (file_put_contents($file_path, $xml)) {
@@ -87,9 +85,9 @@ if (file_put_contents($file_path, $xml)) {
     echo json_encode([
         'success'  => true,
         'ivr_name' => $ivr_name,
-        'message'  => 'IVR Created with Improved G729 Passthrough'
+        'message'  => 'IVR Created with bypass_media=true (Best G729 Passthrough)'
     ]);
 } else {
-    echo json_encode(['success' => false, 'message' => 'Failed to save XML']);
+    echo json_encode(['success' => false, 'message' => 'Failed to save file']);
 }
 ?>
