@@ -10,13 +10,16 @@ if (!$data) {
     exit;
 }
 
-// ২. ডাটা থেকে ভেরিয়েবল সেট করা
+// ২. ডাটা থেকে ভেরিয়েবল সেট করা
+// রিকোয়েস্ট থেকে gateway নম্বর নেওয়া হবে, না থাকলে ডিফল্ট একটা থাকবে
+$gateway = isset($data['gateway']) ? $data['gateway'] : "09617401201"; 
+
 $ivr_name = preg_replace('/[^a-zA-Z0-9_]/', '', $data['ivr_name']) . '_' . time();
 $welcome_msg = $data['welcome_msg'];
-$invalid_msg = $data['invalid_msg'] ?: 'ivr/ivr-invalid_extension.wav';
-$timeout = ($data['timeout_sec'] ?: 5) * 1000; // সেকেন্ডকে মিলিসেকেন্ডে রূপান্তর
-$max_failures = $data['max_failures'] ?: 3;
-$digit_actions = $data['digit_action'] ?: [];
+$invalid_msg = isset($data['invalid_msg']) ? $data['invalid_msg'] : 'ivr/ivr-invalid_extension.wav';
+$timeout = (isset($data['timeout_sec']) ? $data['timeout_sec'] : 5) * 1000;
+$max_failures = isset($data['max_failures']) ? $data['max_failures'] : 3;
+$digit_actions = isset($data['digit_action']) ? $data['digit_action'] : [];
 
 // ৩. XML তৈরি করা
 $xml = "<include>\n";
@@ -26,44 +29,41 @@ $xml .= "        invalid-sound=\"$invalid_msg\"\n";
 $xml .= "        timeout=\"$timeout\"\n";
 $xml .= "        max-failures=\"$max_failures\">\n";
 
-// ৪. ডিজিট অনুযায়ী অ্যাকশন জেনারেট করা
+// ৪. ডিজিট অনুযায়ী অ্যাকশন জেনারেট করা
 foreach ($digit_actions as $digit => $action) {
     $type = $action['type'];
     $dest = $action['dest'];
 
     if ($type === 'forward') {
-        // মোবাইল নম্বর হলে নির্দিষ্ট গেটওয়ে ব্যবহার করে ব্রিজ করা হবে
-        $gateway = "09617401201"; // আপনার দেওয়া গেটওয়ে
+        // রিকোয়েস্ট থেকে পাওয়া $gateway এখানে ব্যবহার হবে
         $param = "bridge sofia/gateway/$gateway/$dest";
         $xml .= "    <entry action=\"menu-exec-app\" digits=\"$digit\" param=\"$param\"/>\n";
     } 
     elseif ($type === 'extension') {
-        // এক্সটেনশন হলে সরাসরি ট্রান্সফার
         $xml .= "    <entry action=\"menu-exec-app\" digits=\"$digit\" param=\"transfer $dest XML default\"/>\n";
     }
     elseif ($type === 'repeat') {
-        // মেনু রিপিট করার জন্য
         $xml .= "    <entry action=\"menu-top\" digits=\"$digit\"/>\n";
     }
-    // অন্য কোনো টাইপ থাকলে এখানে যোগ করা যাবে
 }
 
 $xml .= "  </menu>\n";
 $xml .= "</include>";
 
-// ৫. ফাইল সেভ করা (FreeSWITCH IVR ডিরেক্টরিতে)
+// ৫. ফাইল সেভ করা
 $file_path = "/etc/freeswitch/ivr_menus/$ivr_name.xml";
-$save = file_put_contents($file_path, $xml);
+$save = @file_put_contents($file_path, $xml);
 
 if ($save) {
-    // FreeSWITCH কে রিলোড করার কমান্ড (ঐচ্ছিক - যদি আপনার পারমিশন থাকে)
+    // FreeSWITCH রিলোড কমান্ড
     exec("fs_cli -x 'reloadxml'");
     
     echo json_encode([
         'success' => true,
         'ivr_name' => $ivr_name,
-        'message' => 'IVR created with Gateway routing'
+        'gateway_used' => $gateway,
+        'message' => 'IVR created successfully via API gateway'
     ]);
 } else {
-    echo json_encode(['success' => false, 'message' => 'Failed to write XML file']);
+    echo json_encode(['success' => false, 'message' => 'Failed to write XML file. Check permissions.']);
 }
