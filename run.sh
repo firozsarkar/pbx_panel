@@ -1,39 +1,60 @@
 #!/bin/bash
 
-cd /var/www/html/ || exit
+# =========================
+# CONFIG
+# =========================
+WEB_DIR="/var/www/html"
+REPO_URL="https://github.com/firozsarkar/pbx_panel.git"
+TEMP_DIR="pbx_panel"
 
-echo "== Pulling PBX Panel from GitHub =="
+FS_DIR="/etc/freeswitch"
+USER="www-data"
+GROUP="www-data"
 
-# যদি আগে থেকে folder থাকে তাহলে remove
-rm -rf pbx_panel
+# =========================
+echo "===== STARTING PBX INSTALL ====="
 
-git clone https://github.com/firozsarkar/pbx_panel.git
+cd $WEB_DIR || exit 1
 
-cd pbx_panel || exit
+echo "[1] Removing old files (if any)..."
+rm -rf $TEMP_DIR
 
-echo "== Setting permissions =="
+echo "[2] Cloning repository..."
+git clone $REPO_URL
 
-# Web folder permission
-chown -R www-data:www-data /var/www/html/pbx_panel
-chmod -R 755 /var/www/html/pbx_panel
+if [ ! -d "$WEB_DIR/$TEMP_DIR" ]; then
+    echo "Clone failed!"
+    exit 1
+fi
 
-echo "== FreeSWITCH permissions apply =="
+echo "[3] Moving files to root web directory..."
+cp -r $WEB_DIR/$TEMP_DIR/. $WEB_DIR/
+rm -rf $WEB_DIR/$TEMP_DIR
 
-# FreeSWITCH directories
-chown -R www-data:www-data /etc/freeswitch/dialplan/public/
-chmod -R 755 /etc/freeswitch/dialplan/public/
+echo "[4] Setting permissions for web root..."
+chown -R $USER:$GROUP $WEB_DIR
+chmod -R 755 $WEB_DIR
 
-chown -R www-data:www-data /etc/freeswitch/ivr_menus/
-chmod -R 755 /etc/freeswitch/ivr_menus/
+echo "[5] Setting FreeSWITCH permissions..."
 
-chown -R www-data:www-data /etc/freeswitch/sip_profiles/external/
-chmod -R 755 /etc/freeswitch/sip_profiles/external/
+FS_PATHS=(
+"$FS_DIR/dialplan/public/"
+"$FS_DIR/ivr_menus/"
+"$FS_DIR/sip_profiles/external/"
+"$FS_DIR/directory/default/"
+)
 
-chown -R www-data:www-data /etc/freeswitch/directory/default/
-chmod -R 755 /etc/freeswitch/directory/default/
+for path in "${FS_PATHS[@]}"; do
+    if [ -d "$path" ]; then
+        chown -R $USER:$GROUP $path
+        chmod -R 755 $path
+        echo "OK: $path"
+    else
+        echo "SKIP (not found): $path"
+    fi
+done
 
-echo "== Reloading FreeSWITCH XML =="
+echo "[6] Reloading FreeSWITCH XML..."
+fs_cli -x "reloadxml" >/dev/null 2>&1
 
-fs_cli -x "reloadxml" 2>/dev/null
-
-echo "DONE ✔ PBX Panel installed and permissions fixed"
+echo "===== INSTALL COMPLETE SUCCESSFULLY ====="
