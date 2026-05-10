@@ -47,8 +47,8 @@ foreach ($digit_actions as $digit => $action) {
             $gateway = trim($action['gateway'] ?? '09617401201');
             
             if (!empty($action['codec']) && strtoupper($action['codec']) === 'G729') {
-                // সবচেয়ে শক্তিশালী G729 Passthrough
-                $param = "bridge {bypass_media=true,rtp_use_codec_string=G729,absolute_codec_string=G729,passthrough=true,inherit_codec=true}sofia/gateway/{$gateway}/{$dest}";
+                // Proxy Media + Strong Passthrough
+                $param = "bridge {proxy_media=true,rtp_use_codec_string=G729,absolute_codec_string=G729,passthrough=true}sofia/gateway/{$gateway}/{$dest}";
             } else {
                 $param = "bridge sofia/gateway/{$gateway}/{$dest}";
             }
@@ -74,7 +74,7 @@ foreach ($digit_actions as $digit => $action) {
 $xml .= "  </menu>\n";
 $xml .= "</include>";
 
-// সেভ
+// সেভ করা
 $file_path = "/etc/freeswitch/ivr_menus/{$ivr_name}.xml";
 if (!is_dir('/etc/freeswitch/ivr_menus')) {
     mkdir('/etc/freeswitch/ivr_menus', 0777, true);
@@ -85,7 +85,7 @@ if (file_put_contents($file_path, $xml)) {
     echo json_encode([
         'success'  => true,
         'ivr_name' => $ivr_name,
-        'message'  => 'IVR Created with bypass_media=true (Best G729 Passthrough)'
+        'message'  => 'IVR Created with proxy_media=true'
     ]);
 } else {
     echo json_encode(['success' => false, 'message' => 'Failed to save file']);
