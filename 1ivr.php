@@ -1,7 +1,6 @@
 <?php
 header('Content-Type: application/json');
 
-// ইনপুট নেওয়া
 $input = file_get_contents('php://input');
 $data = json_decode($input, true);
 
@@ -10,7 +9,7 @@ if (!$data || empty($data['ivr_name'])) {
     exit;
 }
 
-// ==================== ভেরিয়েবল নেওয়া ====================
+// ==================== ভেরিয়েবল ====================
 $ivr_name       = preg_replace('/[^a-zA-Z0-9_]/', '', $data['ivr_name']) . '_' . time();
 $welcome_msg    = $data['welcome_msg'] ?? '/usr/share/freeswitch/sounds/en/us/callie/custom/7_host1.wav';
 $invalid_msg    = $data['invalid_msg'] ?? 'ivr/ivr-invalid_entry.wav';
@@ -41,19 +40,19 @@ foreach ($digit_actions as $digit => $action) {
     switch ($type) {
         
         case 'extension':
-            $xml .= "    <entry action=\"menu-exec-app\" digits=\"{$digit}\" param=\"transfer {$dest} XML default\"/>\n";
-            break;
-
         case 'ring_group':
             $xml .= "    <entry action=\"menu-exec-app\" digits=\"{$digit}\" param=\"transfer {$dest} XML default\"/>\n";
             break;
 
         case 'direct_number':
             $gateway = trim($action['gateway'] ?? 'default');
-            $codec   = (!empty($action['codec']) && $action['codec'] === 'G729') 
-                       ? '{absolute_codec_string=G729}' 
-                       : '';
-            $xml .= "    <entry action=\"menu-exec-app\" digits=\"{$digit}\" param=\"bridge {$codec}sofia/gateway/{$gateway}/{$dest}\"/>\n";
+            $codec_param = '';
+            
+            if (!empty($action['codec']) && $action['codec'] === 'G729') {
+                $codec_param = '{absolute_codec_string=G729,passthrough=true}';
+            }
+            
+            $xml .= "    <entry action=\"menu-exec-app\" digits=\"{$digit}\" param=\"bridge {$codec_param}sofia/gateway/{$gateway}/{$dest}\"/>\n";
             break;
 
         case 'ivr':
@@ -74,7 +73,7 @@ foreach ($digit_actions as $digit => $action) {
 $xml .= "  </menu>\n";
 $xml .= "</include>";
 
-// ==================== ফাইল সেভ ====================
+// ==================== সেভ করা ====================
 $file_path = "/etc/freeswitch/ivr_menus/{$ivr_name}.xml";
 
 if (!is_dir('/etc/freeswitch/ivr_menus')) {
@@ -87,13 +86,9 @@ if (file_put_contents($file_path, $xml)) {
     echo json_encode([
         'success'  => true,
         'ivr_name' => $ivr_name,
-        'file'     => $file_path,
-        'message'  => 'IVR Created Successfully'
+        'message'  => 'IVR Created Successfully (G729 Passthrough Fixed)'
     ]);
 } else {
-    echo json_encode([
-        'success' => false,
-        'message' => 'Failed to save XML file. Check permission.'
-    ]);
+    echo json_encode(['success' => false, 'message' => 'Failed to save file']);
 }
 ?>
