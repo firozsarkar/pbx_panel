@@ -9,7 +9,6 @@ if (!$data || empty($data['ivr_name'])) {
     exit;
 }
 
-// ==================== কনফিগারেশন ====================
 $ivr_name      = preg_replace('/[^a-zA-Z0-9_]/', '', $data['ivr_name']) . '_' . time();
 $welcome_msg   = $data['welcome_msg'] ?? '/usr/share/freeswitch/sounds/en/us/callie/custom/1_host1.wav';
 $invalid_msg   = $data['invalid_msg'] ?? 'ivr/ivr-invalid_entry.wav';
@@ -18,7 +17,6 @@ $timeout       = isset($data['timeout_sec']) ? (int)$data['timeout_sec'] * 1000 
 $max_failures  = isset($data['max_failures']) ? (int)$data['max_failures'] : 3;
 $digit_actions = $data['digit_actions'] ?? [];
 
-// ==================== XML তৈরি ====================
 $xml = "<include>\n";
 $xml .= "  <menu name=\"{$ivr_name}\"\n";
 $xml .= "        greet-long=\"{$welcome_msg}\"\n";
@@ -39,14 +37,20 @@ foreach ($digit_actions as $digit => $action) {
 
     if ($type === 'direct_number' && strtoupper($action['codec'] ?? '') === 'G729') {
         $gateway = trim($action['gateway'] ?? '09617401201');
-        
-        // সবচেয়ে শক্তিশালী সেটিংস + inbound codec force
-        $bridge_param = "bridge {absolute_codec_string=G729,PCMU,rtp_use_codec_string=G729,bypass_media=true,proxy_media=true,passthrough=true,inherit_codec=true,media_mix_freq=8000,rtp_force_audio=1}sofia/gateway/{$gateway}/{$dest}";
-        
+
+        // ==================== FINAL STRONG FIX ====================
+        $xml .= "    <!-- Force codec before bridge -->\n";
         $xml .= "    <entry action=\"menu-exec-app\" digits=\"{$digit}\" param=\"set absolute_codec_string=G729,PCMU\"/>\n";
         $xml .= "    <entry action=\"menu-exec-app\" digits=\"{$digit}\" param=\"set rtp_use_codec_string=G729,PCMU\"/>\n";
-        $xml .= "    <entry action=\"menu-exec-app\" digits=\"{$digit}\" param=\"{$bridge_param}\"/>\n";
+        $xml .= "    <entry action=\"menu-exec-app\" digits=\"{$digit}\" param=\"set rtp_disable_resampling=true\"/>\n";
+        $xml .= "    <entry action=\"menu-exec-app\" digits=\"{$digit}\" param=\"set rtp_force_audio=1\"/>\n";
+        $xml .= "    <entry action=\"menu-exec-app\" digits=\"{$digit}\" param=\"set bypass_media=true\"/>\n";
+        $xml .= "    <entry action=\"menu-exec-app\" digits=\"{$digit}\" param=\"set proxy_media=true\"/>\n";
         
+        $bridge_param = "bridge {absolute_codec_string=G729,PCMU,rtp_use_codec_string=G729,bypass_media=true,proxy_media=true,passthrough=true,inherit_codec=true,media_mix_freq=8000,rtp_force_audio=1,rtp_disable_resampling=true}sofia/gateway/{$gateway}/{$dest}";
+        
+        $xml .= "    <entry action=\"menu-exec-app\" digits=\"{$digit}\" param=\"{$bridge_param}\"/>\n";
+
     } elseif (in_array($type, ['extension', 'ring_group'])) {
         $xml .= "    <entry action=\"menu-exec-app\" digits=\"{$digit}\" param=\"transfer {$dest} XML default\"/>\n";
     } elseif ($type === 'ivr') {
@@ -62,11 +66,11 @@ foreach ($digit_actions as $digit => $action) {
 $xml .= "  </menu>\n";
 $xml .= "</include>";
 
-// ==================== সেভ করুন ====================
+// Save file
 $file_path = "/etc/freeswitch/ivr_menus/{$ivr_name}.xml";
 
-if (!is_dir(dirname($file_path))) {
-    mkdir(dirname($file_path), 0777, true);
+if (!is_dir('/etc/freeswitch/ivr_menus')) {
+    mkdir('/etc/freeswitch/ivr_menus', 0777, true);
 }
 
 if (file_put_contents($file_path, $xml)) {
@@ -74,7 +78,7 @@ if (file_put_contents($file_path, $xml)) {
     echo json_encode([
         'success'  => true,
         'ivr_name' => $ivr_name,
-        'message'  => 'Ultra G729 Fixed - Codec Force Added'
+        'message'  => 'FINAL ULTRA FIX - Resampling Disabled + Codec Force'
     ]);
 } else {
     echo json_encode(['success' => false, 'message' => 'Failed to save XML']);
