@@ -14,6 +14,8 @@ echo "FreeSWITCH এবং Web Server (www-data) পারমিশন সেট
 
 # কাস্টম সাউন্ড ফাইল ফোল্ডার
 echo "-> সাউন্ড ফোল্ডার পারমিশন দেওয়া হচ্ছে..."
+cd
+mkdir /usr/share/freeswitch/sounds/en/us/callie/custom/
 chown -R www-data:www-data /usr/share/freeswitch/sounds/en/us/callie/custom/
 chmod -R 775 /usr/share/freeswitch/sounds/en/us/callie/custom/
 
