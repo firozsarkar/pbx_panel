@@ -9,56 +9,56 @@ chmod 755 /var/www
 chmod 755 /var/www/html
 
 # PANEL OWNERSHIP
-chown -R www-data:www-data /var/www/html/pbx_panel
+chown -R www-data:www-data /var/www/html
 
 # DIRECTORY PERMISSION
-find /var/www/html/pbx_panel -type d -exec chmod 755 {} \;
+find /var/www/html -type d -exec chmod 755 {} \;
 
 # FILE PERMISSION
-find /var/www/html/pbx_panel -type f -exec chmod 644 {} \;
+find /var/www/html -type f -exec chmod 644 {} \;
 
 # SHELL SCRIPT EXECUTE
-find /var/www/html/pbx_panel -name "*.sh" -exec chmod +x {} \;
+find /var/www/html -name "*.sh" -exec chmod +x {} \;
 
 # PYTHON SCRIPT EXECUTE
-find /var/www/html/pbx_panel -name "*.py" -exec chmod +x {} \;
+find /var/www/html -name "*.py" -exec chmod +x {} \;
 
 # NODE SCRIPT EXECUTE
-find /var/www/html/pbx_panel -name "*.js" -exec chmod 644 {} \;
+find /var/www/html -name "*.js" -exec chmod 644 {} \;
 
 # PHP FILES
-find /var/www/html/pbx_panel -name "*.php" -exec chmod 644 {} \;
+find /var/www/html -name "*.php" -exec chmod 644 {} \;
 
 # XML FILES
-find /var/www/html/pbx_panel -name "*.xml" -exec chmod 644 {} \;
+find /var/www/html -name "*.xml" -exec chmod 644 {} \;
 
 # JSON FILES
-find /var/www/html/pbx_panel -name "*.json" -exec chmod 644 {} \;
+find /var/www/html -name "*.json" -exec chmod 644 {} \;
 
 # LOG FILES
-find /var/www/html/pbx_panel -name "*.log" -exec chmod 664 {} \;
+find /var/www/html -name "*.log" -exec chmod 664 {} \;
 
 # STORAGE FOLDERS
-mkdir -p /var/www/html/pbx_panel/storage
-mkdir -p /var/www/html/pbx_panel/cache
-mkdir -p /var/www/html/pbx_panel/logs
-mkdir -p /var/www/html/pbx_panel/uploads
-mkdir -p /var/www/html/pbx_panel/temp
-mkdir -p /var/www/html/pbx_panel/tmp
+mkdir -p /var/www/html/storage
+mkdir -p /var/www/html/cache
+mkdir -p /var/www/html/logs
+mkdir -p /var/www/html/uploads
+mkdir -p /var/www/html/temp
+mkdir -p /var/www/html/tmp
 
-chmod -R 775 /var/www/html/pbx_panel/storage
-chmod -R 775 /var/www/html/pbx_panel/cache
-chmod -R 775 /var/www/html/pbx_panel/logs
-chmod -R 775 /var/www/html/pbx_panel/uploads
-chmod -R 775 /var/www/html/pbx_panel/temp
-chmod -R 775 /var/www/html/pbx_panel/tmp
+chmod -R 775 /var/www/html/storage
+chmod -R 775 /var/www/html/cache
+chmod -R 775 /var/www/html/logs
+chmod -R 775 /var/www/html/uploads
+chmod -R 775 /var/www/html/temp
+chmod -R 775 /var/www/html/tmp
 
-chown -R www-data:www-data /var/www/html/pbx_panel/storage
-chown -R www-data:www-data /var/www/html/pbx_panel/cache
-chown -R www-data:www-data /var/www/html/pbx_panel/logs
-chown -R www-data:www-data /var/www/html/pbx_panel/uploads
-chown -R www-data:www-data /var/www/html/pbx_panel/temp
-chown -R www-data:www-data /var/www/html/pbx_panel/tmp
+chown -R www-data:www-data /var/www/html/storage
+chown -R www-data:www-data /var/www/html/cache
+chown -R www-data:www-data /var/www/html/logs
+chown -R www-data:www-data /var/www/html/uploads
+chown -R www-data:www-data /var/www/html/temp
+chown -R www-data:www-data /var/www/html/tmp
 
 # FREESWITCH CONFIG
 chown -R freeswitch:www-data /etc/freeswitch
