@@ -4,11 +4,55 @@ declare(strict_types=1);
 error_reporting(0);
 ini_set('display_errors', '0');
 
-$baseDir = realpath('/usr/local/freeswitch/recordings');
-if ($baseDir === false || !is_dir($baseDir)) {
+$baseDirRaw = '/usr/local/freeswitch/recordings';
+$baseDir = realpath($baseDirRaw);
+if ($baseDir === false) {
+    $baseDir = rtrim($baseDirRaw, '/');
+}
+
+if (!is_dir($baseDir)) {
+    @mkdir($baseDir, 0777, true);
+    $realAfter = realpath($baseDirRaw);
+    if ($realAfter !== false) {
+        $baseDir = $realAfter;
+    }
+}
+
+if (!is_dir($baseDir)) {
     http_response_code(500);
     exit('Recordings directory not found.');
 }
+
+/**
+ * voice_play.php ভিজিট করলেই ডিরেক্টরি ও রেকর্ডিং ফাইলের পারমিশন অটো ঠিক করার চেষ্টা
+ */
+function ensureRecordingsPermissions(string $baseDir): void {
+    if (function_exists('shell_exec')) {
+        $escaped = escapeshellarg($baseDir);
+        @shell_exec("chmod -R 775 {$escaped} 2>/dev/null; find {$escaped} -type d -exec chmod 2775 {} + 2>/dev/null; find {$escaped} -type f -exec chmod 664 {} + 2>/dev/null");
+        return;
+    }
+
+    @chmod($baseDir, 0775);
+    try {
+        $it = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($baseDir, FilesystemIterator::SKIP_DOTS),
+            RecursiveIteratorIterator::SELF_FIRST
+        );
+        foreach ($it as $info) {
+            $p = $info->getPathname();
+            if ($info->isDir()) {
+                @chmod($p, 0775);
+            } else {
+                @chmod($p, 0664);
+            }
+        }
+    } catch (Throwable $e) {
+        // ignore permission errors
+    }
+}
+
+ensureRecordingsPermissions($baseDir);
 
 /**
  * নিরাপদভাবে ফাইল পাথ যাচাই করে (Path Traversal ঠেকাতে)
@@ -19,13 +63,22 @@ function resolveRecordingFile(string $relativePath, string $baseDir): ?string {
         return null;
     }
 
-    $fullPath = realpath($baseDir . DIRECTORY_SEPARATOR . $clean);
-    if ($fullPath === false || !is_file($fullPath)) {
-        return null;
+    foreach (explode('/', $clean) as $seg) {
+        if ($seg === '..') {
+            return null;
+        }
     }
+
+    $candidate = rtrim($baseDir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $clean);
+    $realCandidate = realpath($candidate);
+    $fullPath = ($realCandidate !== false) ? $realCandidate : $candidate;
 
     $basePrefix = rtrim($baseDir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
     if (strpos($fullPath, $basePrefix) !== 0) {
+        return null;
+    }
+
+    if (!file_exists($fullPath) || is_dir($fullPath)) {
         return null;
     }
 
@@ -35,6 +88,89 @@ function resolveRecordingFile(string $relativePath, string $baseDir): ?string {
     }
 
     return $fullPath;
+}
+
+/**
+ * আউটপুট বাফার পরিষ্কার করা
+ */
+function clearOutputBuffers(): void {
+    while (ob_get_level() > 0) {
+        @ob_end_clean();
+    }
+}
+
+/**
+ * ফাইল বাইট আকারে আউটপুটে পাঠানো (Range সমর্থন ও shell fallback সহ)
+ */
+function outputAudioFile(string $filePath, string $mime, string $disposition): void {
+    @chmod($filePath, 0664);
+    clearOutputBuffers();
+
+    $fileName = basename($filePath);
+    $fileSize = @filesize($filePath);
+    if (!is_int($fileSize) || $fileSize < 0) {
+        $stat = @stat($filePath);
+        $fileSize = (is_array($stat) && isset($stat['size'])) ? (int)$stat['size'] : 0;
+    }
+
+    header('Content-Type: ' . $mime);
+    header('Content-Disposition: ' . $disposition . '; filename="' . rawurlencode($fileName) . '"');
+    header('Accept-Ranges: bytes');
+    header('Cache-Control: no-store, no-cache, must-revalidate');
+
+    if (is_readable($filePath)) {
+        if ($fileSize > 0 && isset($_SERVER['HTTP_RANGE']) && preg_match('/bytes=(\d+)-(\d*)/', $_SERVER['HTTP_RANGE'], $matches)) {
+            $start = (int)$matches[1];
+            $end = ($matches[2] !== '') ? (int)$matches[2] : ($fileSize - 1);
+
+            if ($start > $end || $end >= $fileSize) {
+                http_response_code(416);
+                header("Content-Range: bytes */{$fileSize}");
+                exit;
+            }
+
+            $length = $end - $start + 1;
+            http_response_code(206);
+            header("Content-Range: bytes {$start}-{$end}/{$fileSize}");
+            header('Content-Length: ' . $length);
+
+            $fp = @fopen($filePath, 'rb');
+            if ($fp !== false) {
+                fseek($fp, $start);
+                $remaining = $length;
+                while ($remaining > 0 && !feof($fp)) {
+                    $chunk = fread($fp, min(8192, $remaining));
+                    if ($chunk === false) {
+                        break;
+                    }
+                    echo $chunk;
+                    $remaining -= strlen($chunk);
+                }
+                fclose($fp);
+                exit;
+            }
+        }
+
+        if ($fileSize > 0) {
+            header('Content-Length: ' . $fileSize);
+        }
+        @readfile($filePath);
+        exit;
+    }
+
+    if (function_exists('shell_exec')) {
+        $escaped = escapeshellarg($filePath);
+        $raw = @shell_exec("cat {$escaped} 2>/dev/null");
+        if (is_string($raw) && strlen($raw) > 0) {
+            header('Content-Length: ' . strlen($raw));
+            echo $raw;
+            exit;
+        }
+    }
+
+    http_response_code(403);
+    header('Content-Type: text/plain; charset=utf-8');
+    exit('Unable to read recording file.');
 }
 
 /**
@@ -54,47 +190,8 @@ if (isset($_GET['stream']) && is_string($_GET['stream'])) {
         'ogg' => 'audio/ogg',
     ];
     $mime = $mimeTypes[$ext] ?? 'application/octet-stream';
-    $fileSize = filesize($filePath);
-    $fileName = basename($filePath);
 
-    header('Content-Type: ' . $mime);
-    header('Content-Disposition: inline; filename="' . rawurlencode($fileName) . '"');
-    header('Accept-Ranges: bytes');
-    header('Cache-Control: no-cache, must-revalidate');
-
-    if (isset($_SERVER['HTTP_RANGE']) && preg_match('/bytes=(\d+)-(\d*)/', $_SERVER['HTTP_RANGE'], $matches)) {
-        $start = (int)$matches[1];
-        $end = ($matches[2] !== '') ? (int)$matches[2] : ($fileSize - 1);
-
-        if ($start > $end || $end >= $fileSize) {
-            http_response_code(416);
-            header("Content-Range: bytes */{$fileSize}");
-            exit;
-        }
-
-        $length = $end - $start + 1;
-        http_response_code(206);
-        header("Content-Range: bytes {$start}-{$end}/{$fileSize}");
-        header('Content-Length: ' . $length);
-
-        $fp = fopen($filePath, 'rb');
-        fseek($fp, $start);
-        $remaining = $length;
-        while ($remaining > 0 && !feof($fp)) {
-            $chunk = fread($fp, min(8192, $remaining));
-            if ($chunk === false) {
-                break;
-            }
-            echo $chunk;
-            $remaining -= strlen($chunk);
-        }
-        fclose($fp);
-        exit;
-    }
-
-    header('Content-Length: ' . $fileSize);
-    readfile($filePath);
-    exit;
+    outputAudioFile($filePath, $mime, 'inline');
 }
 
 /**
@@ -107,12 +204,7 @@ if (isset($_GET['download']) && is_string($_GET['download'])) {
         exit('Recording not found.');
     }
 
-    $fileName = basename($filePath);
-    header('Content-Type: application/octet-stream');
-    header('Content-Disposition: attachment; filename="' . rawurlencode($fileName) . '"');
-    header('Content-Length: ' . filesize($filePath));
-    readfile($filePath);
-    exit;
+    outputAudioFile($filePath, 'application/octet-stream', 'attachment');
 }
 
 /**
@@ -124,47 +216,57 @@ $searchQuery  = isset($_GET['q']) ? trim((string)$_GET['q']) : '';
 $dates = [];
 $recordings = [];
 
-$iterator = new RecursiveIteratorIterator(
-    new RecursiveDirectoryIterator($baseDir, FilesystemIterator::SKIP_DOTS)
-);
+try {
+    $iterator = new RecursiveIteratorIterator(
+        new RecursiveDirectoryIterator($baseDir, FilesystemIterator::SKIP_DOTS),
+        RecursiveIteratorIterator::SELF_FIRST
+    );
 
-foreach ($iterator as $fileInfo) {
-    if (!$fileInfo->isFile()) {
-        continue;
+    foreach ($iterator as $fileInfo) {
+        if ($fileInfo->isDir()) {
+            continue;
+        }
+
+        $ext = strtolower($fileInfo->getExtension());
+        if (!in_array($ext, ['wav', 'mp3', 'ogg'], true)) {
+            continue;
+        }
+
+        $realPath = $fileInfo->getRealPath();
+        $fullPath = ($realPath !== false) ? $realPath : $fileInfo->getPathname();
+
+        $relPath = ltrim(str_replace($baseDir, '', $fullPath), '/\\');
+        $relPathUnix = str_replace('\\', '/', $relPath);
+
+        $parts = explode('/', $relPathUnix);
+        $mtime = (int)@$fileInfo->getMTime();
+        $folderDate = (count($parts) > 1 && preg_match('/^\d{4}-\d{2}-\d{2}$/', $parts[0]))
+            ? $parts[0]
+            : date('Y-m-d', $mtime > 0 ? $mtime : time());
+
+        $dates[$folderDate] = true;
+
+        if ($selectedDate !== '' && $folderDate !== $selectedDate) {
+            continue;
+        }
+
+        $fileName = $fileInfo->getFilename();
+        if ($searchQuery !== '' && stripos($fileName, $searchQuery) === false && stripos($relPathUnix, $searchQuery) === false) {
+            continue;
+        }
+
+        $size = (int)@$fileInfo->getSize();
+
+        $recordings[] = [
+            'rel_path' => $relPathUnix,
+            'name'     => $fileName,
+            'date'     => $folderDate,
+            'size'     => $size,
+            'mtime'    => $mtime,
+        ];
     }
-
-    $ext = strtolower($fileInfo->getExtension());
-    if (!in_array($ext, ['wav', 'mp3', 'ogg'], true)) {
-        continue;
-    }
-
-    $fullPath = $fileInfo->getRealPath();
-    $relPath = ltrim(str_replace($baseDir, '', $fullPath), '/\\');
-    $relPathUnix = str_replace('\\', '/', $relPath);
-
-    $parts = explode('/', $relPathUnix);
-    $folderDate = (count($parts) > 1 && preg_match('/^\d{4}-\d{2}-\d{2}$/', $parts[0]))
-        ? $parts[0]
-        : date('Y-m-d', $fileInfo->getMTime());
-
-    $dates[$folderDate] = true;
-
-    if ($selectedDate !== '' && $folderDate !== $selectedDate) {
-        continue;
-    }
-
-    $fileName = $fileInfo->getFilename();
-    if ($searchQuery !== '' && stripos($fileName, $searchQuery) === false && stripos($relPathUnix, $searchQuery) === false) {
-        continue;
-    }
-
-    $recordings[] = [
-        'rel_path' => $relPathUnix,
-        'name'     => $fileName,
-        'date'     => $folderDate,
-        'size'     => $fileInfo->getSize(),
-        'mtime'    => $fileInfo->getMTime(),
-    ];
+} catch (Throwable $e) {
+    // ignore iteration errors
 }
 
 krsort($dates);
@@ -201,9 +303,9 @@ function h(string $str): string {
       --muted: #94a3b8;
       --gold: #eab308;
       --gold-soft: rgba(234, 179, 8, 0.14);
-      --accent: #38bdf8;
+      --warn: #f87171;
     }
-    * { box-sizing: border-box; }
+    *, *::before, *::after { box-sizing: border-box; }
     body {
       margin: 0;
       padding: 24px;
@@ -300,6 +402,11 @@ function h(string $str): string {
       color: var(--muted);
       margin-top: 3px;
     }
+    .zero-note {
+      font-size: 12px;
+      color: var(--warn);
+      margin-top: 4px;
+    }
     audio {
       height: 34px;
       width: 260px;
@@ -328,7 +435,7 @@ function h(string $str): string {
     <div class="header">
       <div class="title">
         <h1>Call Recordings</h1>
-        <p>Directory: <code>/usr/local/freeswitch/recordings</code> • Total: <strong><?= count($recordings) ?></strong></p>
+        <p>Directory: <code><?= h($baseDir) ?></code> • Total: <strong><?= count($recordings) ?></strong></p>
       </div>
     </div>
 
@@ -344,21 +451,21 @@ function h(string $str): string {
 
       <button type="submit">ফিল্টার</button>
       <?php if ($selectedDate !== '' || $searchQuery !== ''): ?>
-        <a href="voice_play.php" class="btn reset-btn">রিসেট</a>
+        <a href="<?= h(basename((string)($_SERVER['PHP_SELF'] ?? 'voice_play.php'))) ?>" class="btn reset-btn">রিসেট</a>
       <?php endif; ?>
     </form>
 
     <div class="table-wrap">
       <?php if (empty($recordings)): ?>
-        <div class="empty">কোনো কল রেকর্ডিং ফাইল পাওয়া যায়নি।</div>
+        <div class="empty">কোনো কল রেকর্ডিং ফাইল পাওয়া যায়নি।</div>
       <?php else: ?>
         <table>
           <thead>
             <tr>
               <th>ফাইল / নম্বর</th>
-              <th>তারিখ ও সময়</th>
+              <th>তারিখ ও সময়</th>
               <th>সাইজ</th>
-              <th>প্লেয়ার</th>
+              <th>প্লেয়ার</th>
               <th>ডাউনলোড</th>
             </tr>
           </thead>
@@ -368,11 +475,14 @@ function h(string $str): string {
                 <td>
                   <div class="file-name"><?= h($rec['name']) ?></div>
                   <div class="meta"><?= h($rec['rel_path']) ?></div>
+                  <?php if ($rec['size'] <= 0): ?>
+                    <div class="zero-note">ফাইল সাইজ 0 B (রেকর্ডিং অডিও ডাটা লেখা হয়নি)</div>
+                  <?php endif; ?>
                 </td>
-                <td><?= h(date('Y-m-d H:i:s', $rec['mtime'])) ?></td>
+                <td><?= h(date('Y-m-d H:i:s', $rec['mtime'] > 0 ? $rec['mtime'] : time())) ?></td>
                 <td><?= h(formatBytes($rec['size'])) ?></td>
                 <td>
-                  <audio controls preload="none" src="?stream=<?= urlencode($rec['rel_path']) ?>"></audio>
+                  <audio controls preload="metadata" src="?stream=<?= urlencode($rec['rel_path']) ?>"></audio>
                 </td>
                 <td>
                   <a class="dl-btn" href="?download=<?= urlencode($rec['rel_path']) ?>">Download</a>
