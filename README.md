@@ -1,5 +1,5 @@
 ```bash
-cd /var/www/html
+cd /var/www/html/
 https://raw.githubusercontent.com/firozsarkar/pbx_panel/refs/heads/main/status_gateway.php
 https://raw.githubusercontent.com/firozsarkar/pbx_panel/refs/heads/main/status_extension.php
 https://raw.githubusercontent.com/firozsarkar/pbx_panel/refs/heads/main/upload_api.php
