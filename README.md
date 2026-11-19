@@ -5,7 +5,8 @@ wget https://raw.githubusercontent.com/firozsarkar/pbx_panel/refs/heads/main/sta
 wget https://raw.githubusercontent.com/firozsarkar/pbx_panel/refs/heads/main/upload_api.php
 wget https://raw.githubusercontent.com/firozsarkar/pbx_panel/refs/heads/main/voice_play.php
 wget https://raw.githubusercontent.com/firozsarkar/pbx_panel/refs/heads/main/reload.php
-
+wget https://raw.githubusercontent.com/firozsarkar/pbx_panel/refs/heads/main/cdr_log.php
+wget https://raw.githubusercontent.com/firozsarkar/pbx_panel/refs/heads/main/voice_play.php
 ```
 
 ```bash
