@@ -12,7 +12,8 @@ $gwRaw  = isset($_GET['gw']) ? trim($_GET['gw']) : '';
 // Gateway name validate করা হচ্ছে (command injection ঠেকাতে)
 $gwName = preg_replace('/[^a-zA-Z0-9_.-]/', '', $gwRaw);
 
-$results = [];
+$command = "";
+$output = "";
 $errorMessage = "";
 
 if (!function_exists('shell_exec')) {
@@ -21,29 +22,12 @@ if (!function_exists('shell_exec')) {
     if ($gwName === '') {
         $errorMessage = "Error: Retry করার জন্য সঠিক Gateway নাম (?action=retry&gw=gateway_name) দিন।";
     } else {
-        $commands = [
-            'killgw' => 'fs_cli -x ' . escapeshellarg("sofia profile external killgw {$gwName}") . ' 2>&1',
-            'rescan' => 'fs_cli -x "sofia profile external rescan" 2>&1',
-        ];
-
-        foreach ($commands as $key => $cmd) {
-            $results[$key] = [
-                'cmd'    => $cmd,
-                'output' => shell_exec($cmd),
-            ];
-        }
+        $command = 'fs_cli -x ' . escapeshellarg("sofia profile external killgw {$gwName}") . ' 2>&1';
+        $output  = shell_exec($command);
     }
 } elseif ($action === 'rescan') {
-    $commands = [
-        'rescan' => 'fs_cli -x "sofia profile external rescan" 2>&1',
-    ];
-
-    foreach ($commands as $key => $cmd) {
-        $results[$key] = [
-            'cmd'    => $cmd,
-            'output' => shell_exec($cmd),
-        ];
-    }
+    $command = 'fs_cli -x "sofia profile external rescan" 2>&1';
+    $output  = shell_exec($command);
 } else {
     $errorMessage = "Error: অজানা action ('" . htmlspecialchars($action) . "')। শুধু 'rescan' অথবা 'retry' ব্যবহার করুন।";
 }
@@ -167,12 +151,10 @@ if (!function_exists('shell_exec')) {
             — কমান্ড এক্সিকিউট সম্পন্ন হয়েছে।
         </div>
 
-        <?php foreach ($results as $item): ?>
-            <div>
-                <span class="label">&gt; $ <?= htmlspecialchars($item['cmd']); ?></span>
-                <pre><?= htmlspecialchars($item['output'] !== null && trim($item['output']) !== '' ? $item['output'] : 'No output returned'); ?></pre>
-            </div>
-        <?php endforeach; ?>
+        <div>
+            <span class="label">&gt; $ <?= htmlspecialchars($command); ?></span>
+            <pre><?= htmlspecialchars($output !== null && trim($output) !== '' ? $output : 'No output returned'); ?></pre>
+        </div>
     <?php endif; ?>
 </div>
 
