@@ -3,7 +3,7 @@ $message = "";
 $error = "";
 
 // অডিও ফাইল কোথায় জমা হবে (পাথ পরিবর্তন করতে পারেন)
-$target_dir = "/usr/share/freeswitch/sounds/en/us/callie/custom/";
+$target_dir = "/usr/share/freeswitch/sounds/en/us/callie/";
 
 // ফোল্ডার না থাকলে তৈরি করা
 if (!file_exists($target_dir)) {
