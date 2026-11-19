@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SYNC_URL="https://pbx.registercamp.com/freeswitch/sync_cdr.php"
+SYNC_TOKEN="firoz"
+CDR_FILE="/usr/local/freeswitch/log/cdr-csv/Master.csv"
+WORKER_SCRIPT="/usr/local/bin/fs_cdr_sync.sh"
+CRON_LINE="* * * * * ${WORKER_SCRIPT} >/dev/null 2>&1"
+CRON_MARKER="# FS_CDR_SYNC_CRON"
+
+# 1. Worker script তৈরি
+cat << WORKER_EOF > "${WORKER_SCRIPT}"
+#!/usr/bin/env bash
+set -u
+
+CDR_FILE="${CDR_FILE}"
+SYNC_URL="${SYNC_URL}"
+SYNC_TOKEN="${SYNC_TOKEN}"
+
+LOCK_FILE="/var/lock/fs_cdr_sync.lock"
+STATE_DIR="/var/lib/fs_cdr_sync"
+BATCH_FILE="\$STATE_DIR/batch.csv"
+PAYLOAD_FILE="\$STATE_DIR/payload.json"
+RESP_FILE="\$STATE_DIR/resp.json"
+ERR_LOG="/var/log/fs_cdr_sync.log"
+
+mkdir -p "\$STATE_DIR"
+
+exec 9>"\$LOCK_FILE"
+flock -n 9 || exit 0
+
+if [ ! -s "\$CDR_FILE" ]; then
+    exit 0
+fi
+
+cp "\$CDR_FILE" "\$BATCH_FILE" || exit 0
+: > "\$CDR_FILE"
+
+python3 - "\$BATCH_FILE" "\$PAYLOAD_FILE" << 'PYEOF'
+import hashlib, json, sys
+
+batch_path, out_path = sys.argv[1], sys.argv[2]
+items = []
+
+with open(batch_path, "r", encoding="utf-8", errors="replace") as f:
+    for raw in f:
+        line = raw.rstrip("\r\n")
+        if not line.strip():
+            continue
+        h = hashlib.sha256(line.encode("utf-8")).hexdigest()
+        items.append({"hash": h, "line": line})
+
+with open(out_path, "w", encoding="utf-8") as out:
+    json.dump({"lines": items}, out, ensure_ascii=False)
+PYEOF
+
+if [ ! -s "\$PAYLOAD_FILE" ]; then
+    rm -f "\$BATCH_FILE" "\$PAYLOAD_FILE"
+    exit 0
+fi
+
+HTTP_CODE=\$(curl -sS -X POST "\$SYNC_URL" \\
+    -H "Content-Type: application/json" \\
+    -H "X-SYNC-TOKEN: \$SYNC_TOKEN" \\
+    --data-binary @"\$PAYLOAD_FILE" \\
+    -o "\$RESP_FILE" \\
+    -w "%{http_code}" --connect-timeout 10 --max-time 30) || HTTP_CODE="000"
+
+if [ "\$HTTP_CODE" = "200" ] && grep -q '"status"[[:space:]]*:[[:space:]]*"ok"' "\$RESP_FILE" 2>/dev/null; then
+    rm -f "\$BATCH_FILE" "\$PAYLOAD_FILE" "\$RESP_FILE"
+else
+    { cat "\$BATCH_FILE"; cat "\$CDR_FILE"; } > "\$CDR_FILE.tmp" && mv "\$CDR_FILE.tmp" "\$CDR_FILE"
+    rm -f "\$BATCH_FILE" "\$PAYLOAD_FILE" "\$RESP_FILE"
+    echo "\$(date '+%F %T') Sync failed (HTTP \$HTTP_CODE)" >> "\$ERR_LOG"
+fi
+WORKER_EOF
+
+chmod +x "${WORKER_SCRIPT}"
+
+# 2. Duplicate cron এড়িয়ে শুধুমাত্র ১টি cron এন্ট্রি নিশ্চিত করা
+CURRENT_CRON="$(crontab -l 2>/dev/null || true)"
+CLEAN_CRON="$(printf "%s\n" "${CURRENT_CRON}" | grep -v "${WORKER_SCRIPT}" | grep -v "${CRON_MARKER}" || true)"
+
+{
+    if [ -n "${CLEAN_CRON}" ]; then
+        printf "%s\n" "${CLEAN_CRON}"
+    fi
+    printf "%s %s\n" "${CRON_LINE}" "${CRON_MARKER}"
+} | crontab -
+
+echo "DONE: ${WORKER_SCRIPT} configured for ${SYNC_URL}"
