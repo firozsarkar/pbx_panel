@@ -4,9 +4,8 @@ error_reporting(E_ALL);
 ini_set('display_errors', 1);
 
 // Query parameters থেকে action এবং gateway name নেওয়া হচ্ছে
-// উদাহরণ:
 // ?action=rescan
-// ?action=retry&gw=my_gateway_name
+// ?action=retry&gw=gateway_name
 $action = isset($_GET['action']) ? strtolower(trim($_GET['action'])) : 'rescan';
 $gwRaw  = isset($_GET['gw']) ? trim($_GET['gw']) : '';
 
@@ -22,11 +21,9 @@ if (!function_exists('shell_exec')) {
     if ($gwName === '') {
         $errorMessage = "Error: Retry করার জন্য সঠিক Gateway নাম (?action=retry&gw=gateway_name) দিন।";
     } else {
-        $safeGw = escapeshellarg($gwName);
         $commands = [
-            'reloadxml' => 'fs_cli -x "reloadxml" 2>&1',
-            'killgw'    => 'fs_cli -x ' . escapeshellarg("sofia profile external killgw {$gwName}") . ' 2>&1',
-            'rescan'    => 'fs_cli -x "sofia profile external rescan" 2>&1',
+            'killgw' => 'fs_cli -x ' . escapeshellarg("sofia profile external killgw {$gwName}") . ' 2>&1',
+            'rescan' => 'fs_cli -x "sofia profile external rescan" 2>&1',
         ];
 
         foreach ($commands as $key => $cmd) {
@@ -38,8 +35,7 @@ if (!function_exists('shell_exec')) {
     }
 } elseif ($action === 'rescan') {
     $commands = [
-        'reloadxml' => 'fs_cli -x "reloadxml" 2>&1',
-        'rescan'    => 'fs_cli -x "sofia profile external rescan" 2>&1',
+        'rescan' => 'fs_cli -x "sofia profile external rescan" 2>&1',
     ];
 
     foreach ($commands as $key => $cmd) {
@@ -57,7 +53,7 @@ if (!function_exists('shell_exec')) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FreeSWITCH Reload & Retry</title>
+    <title>FreeSWITCH Sofia Control</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -103,8 +99,6 @@ if (!function_exists('shell_exec')) {
             cursor: pointer;
             font-size: 14px;
             font-weight: bold;
-            text-decoration: none;
-            display: inline-block;
         }
         .btn-rescan {
             background-color: #2563eb;
@@ -152,12 +146,12 @@ if (!function_exists('shell_exec')) {
 <body>
 
 <div class="container">
-    <h2>FreeSWITCH কমান্ড কন্ট্রোল (Rescan / Retry)</h2>
+    <h2>FreeSWITCH Sofia Control</h2>
 
     <form method="GET" class="controls">
         <input type="text" name="gw" value="<?= htmlspecialchars($gwName); ?>" placeholder="Gateway নাম লিখুন (Retry এর জন্য)">
         <button type="submit" name="action" value="rescan" class="btn btn-rescan">Rescan</button>
-        <button type="submit" name="action" value="retry" class="btn btn-retry">Retry (KillGW + Rescan)</button>
+        <button type="submit" name="action" value="retry" class="btn btn-retry">Retry</button>
     </form>
 
     <?php if ($errorMessage !== ""): ?>
