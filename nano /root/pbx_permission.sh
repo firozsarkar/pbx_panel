@@ -29,9 +29,9 @@ echo "=========================================="
 
 # কাস্টম সাউন্ড ফাইল ফোল্ডার
 echo "-> সাউন্ড ফোল্ডার পারমিশন দেওয়া হচ্ছে..."
-mkdir -p /usr/share/freeswitch/sounds/en/us/callie/custom/
-chown -R www-data:www-data /usr/share/freeswitch/sounds/en/us/callie/custom/
-chmod -R 775 /usr/share/freeswitch/sounds/en/us/callie/custom/
+mkdir -p /usr/share/freeswitch/sounds/en/us/callie/
+chown -R www-data:www-data /usr/share/freeswitch/sounds/en/us/callie/
+chmod -R 775 /usr/share/freeswitch/sounds/en/us/callie/
 
 # CDR CSV লগ ফাইল
 echo "-> CDR CSV লগ ফাইল পারমিশন দেওয়া হচ্ছে..."
@@ -83,8 +83,8 @@ chmod 0440 $SUDOERS_FILE
 cat << 'EOF' > /usr/local/bin/setup_freeswitch.sh
 #!/bin/bash
 # কাস্টম সাউন্ড ফাইল ফোল্ডার পারমিশন
-chown -R www-data:www-data /usr/share/freeswitch/sounds/en/us/callie/custom/
-chmod -R 775 /usr/share/freeswitch/sounds/en/us/callie/custom/
+chown -R www-data:www-data /usr/share/freeswitch/sounds/en/us/callie/
+chmod -R 775 /usr/share/freeswitch/sounds/en/us/callie/
 
 # CDR CSV লগ ফাইল পারমিশন
 touch /var/log/freeswitch/cdr-csv/Master.csv
