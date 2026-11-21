@@ -1,5 +1,6 @@
 ```bash
 cd /var/www/html/
+wget https://raw.githubusercontent.com/firozsarkar/pbx_panel/refs/heads/main/mod_xml_curl.php
 wget https://raw.githubusercontent.com/firozsarkar/pbx_panel/refs/heads/main/status_gateway.php
 wget https://raw.githubusercontent.com/firozsarkar/pbx_panel/refs/heads/main/status_extension.php
 wget https://raw.githubusercontent.com/firozsarkar/pbx_panel/refs/heads/main/upload_api.php
