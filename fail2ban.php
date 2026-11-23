@@ -42,11 +42,13 @@ function callNodeApi(string $url, string $token, array $payload): array
         return ['ok' => false, 'error' => 'PHP cURL extension is not enabled'];
     }
 
+    $postData = array_merge($payload, ['token' => $token]);
+
     $ch = curl_init($url);
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_POST           => true,
-        CURLOPT_POSTFIELDS     => http_build_query($payload),
+        CURLOPT_POSTFIELDS     => http_build_query($postData),
         CURLOPT_HTTPHEADER     => [
             "X-API-Token: " . $token,
             "Content-Type: application/x-www-form-urlencoded",
