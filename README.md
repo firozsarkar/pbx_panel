@@ -7,6 +7,7 @@ wget https://raw.githubusercontent.com/firozsarkar/pbx_panel/refs/heads/main/upl
 wget https://raw.githubusercontent.com/firozsarkar/pbx_panel/refs/heads/main/voice_play.php
 wget https://raw.githubusercontent.com/firozsarkar/pbx_panel/refs/heads/main/reload.php
 wget https://raw.githubusercontent.com/firozsarkar/pbx_panel/refs/heads/main/cdr_log.php
+wget https://raw.githubusercontent.com/firozsarkar/pbx_panel/refs/heads/main/fail2ban.php
 wget https://raw.githubusercontent.com/firozsarkar/pbx_panel/refs/heads/main/voice_play.php
 ```
 
