@@ -2,9 +2,6 @@
 /**
  * vb_worker.php — Voice Broadcasting ডায়ালার (FreeSWITCH VPS: 38.60.235.146)
  * Path: /var/www/html/vb_worker.php
- *
- * FreeSWITCH VPS-এ crontab -e দিয়ে যুক্ত করুন:
- *   * * * * * /usr/bin/php /var/www/html/vb_worker.php >> /var/log/vb_worker.log 2>&1
  */
 if (PHP_SAPI !== 'cli') {
     exit("CLI only\n");
@@ -14,9 +11,8 @@ set_time_limit(0);
 /* ============================ কনফিগ ============================ */
 const ESL_HOST = '127.0.0.1';
 const ESL_PORT = 8021;
-const ESL_PASS = 'ClueCon';               // /etc/freeswitch/autoload_configs/event_socket.conf.xml এর password
+const ESL_PASS = 'ClueCon';
 
-// cPanel Remote MySQL কনফিগ (cPanel-এ 38.60.235.146 IP হোয়াইটলিস্ট থাকতে হবে)
 const DB_HOST  = '103.163.246.205';
 const DB_PORT  = 3306;
 const DB_NAME  = 'register_pbx';
@@ -25,19 +21,18 @@ const DB_PASS  = 'register_pbx';
 
 const DOMAIN   = '38.60.235.146';
 
-const ORIGINATE_TIMEOUT      = 30;      // রিং করার সর্বোচ্চ সময় (সেকেন্ড)
-const MAX_ORIGINATE_PER_TICK = 2;       // প্রতি সেকেন্ডে সর্বোচ্চ নতুন কল (গেটওয়ে CPS সুরক্ষা)
-const PRESS1_WAIT_MS         = 8000;    // অডিও শেষ হওয়ার পর ১ চাপার জন্য অপেক্ষা (মিলিসেকেন্ড)
+const ORIGINATE_TIMEOUT      = 30;
+const MAX_ORIGINATE_PER_TICK = 2;
+const PRESS1_WAIT_MS         = 8000;
 
-// বিলিং (প্রথমে false রাখুন; চালু করতে true করুন)
 const BILLING_ENABLED = false;
 const RATE_PER_MIN    = 0.50;
-const BILL_STEP       = 6;              // সেকেন্ড পালস
+const BILL_STEP       = 6;
 
 /* ============================ লক ============================ */
 $lock = fopen('/tmp/vb_worker.lock', 'c');
 if (!$lock || !flock($lock, LOCK_EX | LOCK_NB)) {
-    exit(0); // আরেকটি ওয়ার্কার ইতিমধ্যে চলছে
+    exit(0);
 }
 
 function logm(string $m): void
@@ -199,6 +194,7 @@ function transferDial(string $to, string $gw): ?string
     }
     return null;
 }
+
 function finishCall(array $c, string $uuid, array $h): void
 {
     $billsec = (int)($h['variable_billsec'] ?? 0);
@@ -215,7 +211,6 @@ function finishCall(array $c, string $uuid, array $h): void
         $status = 'failed';
     }
 
-    // রিট্রাই বাকি থাকলে আবার pending সেট হবে
     if ($status !== 'answered' && $c['attempts'] < 1 + $c['retry']) {
         $status = 'pending';
     }
@@ -276,7 +271,6 @@ function dialTick(Esl $esl, array &$active): void
 
             $slots = min((int)$k['max_channels'] - $cnt, MAX_ORIGINATE_PER_TICK);
 
-            // দৈনিক কল লিমিট চেক
             $q = $pdo->prepare("SELECT COUNT(*) FROM vb_contacts c JOIN vb_campaigns kk ON kk.id = c.campaign_id
                                 WHERE kk.user_id = ? AND c.last_attempt_at >= CURDATE()");
             $q->execute([$k['user_id']]);
@@ -294,7 +288,6 @@ function dialTick(Esl $esl, array &$active): void
                 foreach ($pdo->query($sql)->fetchAll() as $c) {
                     $fetched++;
 
-                    // DNC চেক
                     $d = $pdo->prepare("SELECT 1 FROM vb_dnc WHERE user_id = ? AND number = ? LIMIT 1");
                     $d->execute([$k['user_id'], $c['number']]);
                     if ($d->fetchColumn()) {
@@ -346,7 +339,6 @@ function dialTick(Esl $esl, array &$active): void
             }
         }
 
-        // সব কল ও রিট্রাই শেষ হলে ক্যাম্পেইন done
         if ($cnt === 0 && $fetched === 0) {
             $r = $pdo->prepare("
                 SELECT COUNT(*) FROM vb_contacts c
@@ -424,21 +416,21 @@ while (true) {
                 $digit = (string)($ev['DTMF-Digit'] ?? '');
                 $active[$uuid]['dtmf'] .= $digit;
                 $a = $active[$uuid];
-               if ($digit === '1' && $a['press1'] && !$a['xferred']) {
-    $dial = transferDial($a['xfer'], $a['gw']);
-    if ($dial) {
-        $active[$uuid]['xferred'] = true;
-        if (strpos($dial, 'EXT:') === 0) {
-            $ext = substr($dial, 4);
-            $bridgeExpr = '${sofia_contact(' . $ext . '@' . DOMAIN . ')}';
-            $esl->send("bgapi uuid_transfer {$uuid} 'set:hangup_after_bridge=true,bridge:{$bridgeExpr}' inline");
-            logm("TRANSFER uuid={$uuid} -> ext {$ext} via sofia_contact");
-        } else {
-            $esl->send("bgapi uuid_transfer {$uuid} 'set:hangup_after_bridge=true,bridge:{$dial}' inline");
-            logm("TRANSFER uuid={$uuid} -> {$dial}");
-        }
-    }
-}
+                if ($digit === '1' && $a['press1'] && !$a['xferred']) {
+                    $dial = transferDial($a['xfer'], $a['gw']);
+                    if ($dial) {
+                        $active[$uuid]['xferred'] = true;
+                        if (strpos($dial, 'EXT:') === 0) {
+                            $ext = substr($dial, 4);
+                            $bridgeExpr = '${sofia_contact(' . $ext . '@' . DOMAIN . ')}';
+                            $esl->send("bgapi uuid_transfer {$uuid} 'set:hangup_after_bridge=true,bridge:{$bridgeExpr}' inline");
+                            logm("TRANSFER uuid={$uuid} -> ext {$ext} via sofia_contact");
+                        } else {
+                            $esl->send("bgapi uuid_transfer {$uuid} 'set:hangup_after_bridge=true,bridge:{$dial}' inline");
+                            logm("TRANSFER uuid={$uuid} -> {$dial}");
+                        }
+                    }
+                }
 
             } elseif ($name === 'CHANNEL_HANGUP_COMPLETE') {
                 finishCall($active[$uuid], $uuid, $ev);
