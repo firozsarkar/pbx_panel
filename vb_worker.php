@@ -2,9 +2,6 @@
 /**
  * vb_worker.php — Voice Broadcasting ডায়ালার (FreeSWITCH VPS: 38.60.235.146)
  * Path: /var/www/html/vb_worker.php
- *
- * FreeSWITCH VPS-এ crontab -e দিয়ে যুক্ত করুন:
- *   * * * * * /usr/bin/php /var/www/html/vb_worker.php >> /var/log/vb_worker.log 2>&1
  */
 if (PHP_SAPI !== 'cli') {
     exit("CLI only\n");
@@ -14,30 +11,29 @@ set_time_limit(0);
 /* ============================ কনফিগ ============================ */
 const ESL_HOST = '127.0.0.1';
 const ESL_PORT = 8021;
-const ESL_PASS = 'ClueCon';               // /etc/freeswitch/autoload_configs/event_socket.conf.xml এর password
+const ESL_PASS = 'ClueCon';
 
-// cPanel Remote MySQL কনফিগ (cPanel-এ 38.60.235.146 IP হোয়াইটলিস্ট থাকতে হবে)
 const DB_HOST  = '103.163.246.205';
 const DB_PORT  = 3306;
 const DB_NAME  = 'register_pbx';
 const DB_USER  = 'register_pbx';
 const DB_PASS  = 'register_pbx';
+const DB_TZ    = '+06:00';
 
 const DOMAIN   = '38.60.235.146';
 
-const ORIGINATE_TIMEOUT      = 30;      // রিং করার সর্বোচ্চ সময় (সেকেন্ড)
-const MAX_ORIGINATE_PER_TICK = 2;       // প্রতি সেকেন্ডে সর্বোচ্চ নতুন কল (গেটওয়ে CPS সুরক্ষা)
-const PRESS1_WAIT_MS         = 8000;    // অডিও শেষ হওয়ার পর ১ চাপার জন্য অপেক্ষা (মিলিসেকেন্ড)
+const ORIGINATE_TIMEOUT      = 30;
+const MAX_ORIGINATE_PER_TICK = 2;
+const PRESS1_WAIT_MS         = 8000;
 
-// বিলিং (প্রথমে false রাখুন; চালু করতে true করুন)
 const BILLING_ENABLED = false;
 const RATE_PER_MIN    = 0.50;
-const BILL_STEP       = 6;              // সেকেন্ড পালস
+const BILL_STEP       = 6;
 
 /* ============================ লক ============================ */
 $lock = fopen('/tmp/vb_worker.lock', 'c');
 if (!$lock || !flock($lock, LOCK_EX | LOCK_NB)) {
-    exit(0); // আরেকটি ওয়ার্কার ইতিমধ্যে চলছে
+    exit(0);
 }
 
 function logm(string $m): void
@@ -161,10 +157,10 @@ class Esl
 }
 
 /* ============================ DB কানেকশন ============================ */
-function db(): PDO
+function db(bool $forceReconnect = false): PDO
 {
     static $pdo = null;
-    if ($pdo) {
+    if ($pdo && !$forceReconnect) {
         try {
             $pdo->query('SELECT 1');
             return $pdo;
@@ -178,7 +174,19 @@ function db(): PDO
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
         PDO::ATTR_TIMEOUT            => 5,
     ]);
+    if (DB_TZ !== '') {
+        $pdo->exec("SET time_zone = '" . DB_TZ . "'");
+    }
     return $pdo;
+}
+
+function execDbWithRetry(callable $fn)
+{
+    try {
+        return $fn(db(false));
+    } catch (\Throwable $e) {
+        return $fn(db(true));
+    }
 }
 
 /* ============================ হেল্পার ============================ */
@@ -200,6 +208,17 @@ function transferDial(string $to, string $gw): ?string
     return null;
 }
 
+function resolveCallUuid(array $ev, array $active): string
+{
+    foreach (['Unique-ID', 'Channel-Call-UUID', 'variable_origination_uuid'] as $k) {
+        $cand = trim((string)($ev[$k] ?? ''));
+        if ($cand !== '' && isset($active[$cand])) {
+            return $cand;
+        }
+    }
+    return trim((string)($ev['Unique-ID'] ?? ''));
+}
+
 function finishCall(array $c, string $uuid, array $h): void
 {
     $billsec = (int)($h['variable_billsec'] ?? 0);
@@ -216,7 +235,6 @@ function finishCall(array $c, string $uuid, array $h): void
         $status = 'failed';
     }
 
-    // রিট্রাই বাকি থাকলে আবার pending সেট হবে
     if ($status !== 'answered' && $c['attempts'] < 1 + $c['retry']) {
         $status = 'pending';
     }
@@ -226,13 +244,20 @@ function finishCall(array $c, string $uuid, array $h): void
         $cost = round(ceil($billsec / BILL_STEP) * BILL_STEP / 60 * RATE_PER_MIN, 4);
     }
 
-    $st = db()->prepare("UPDATE vb_contacts SET status=?, duration=?, billsec=?, dtmf=?, hangup_cause=?, cost=? WHERE id=?");
-    $st->execute([$status, $dur, $billsec, substr($c['dtmf'], 0, 10), $cause, $cost, $c['cid']]);
+    $dtmfShort = substr((string)$c['dtmf'], 0, 10);
+    $cid       = (int)$c['cid'];
+    $uid       = (int)$c['uid'];
 
-    if ($cost > 0) {
-        db()->prepare("UPDATE users SET balance = balance - ? WHERE id = ?")->execute([$cost, $c['uid']]);
-    }
-    logm("END uuid={$uuid} contact={$c['cid']} status={$status} billsec={$billsec} cause={$cause} dtmf={$c['dtmf']}");
+    execDbWithRetry(function (PDO $pdo) use ($status, $dur, $billsec, $dtmfShort, $cause, $cost, $cid, $uid) {
+        $st = $pdo->prepare("UPDATE vb_contacts SET status=?, duration=?, billsec=?, dtmf=?, hangup_cause=?, cost=? WHERE id=?");
+        $st->execute([$status, $dur, $billsec, $dtmfShort, $cause, $cost, $cid]);
+
+        if ($cost > 0) {
+            $pdo->prepare("UPDATE users SET balance = balance - ? WHERE id = ?")->execute([$cost, $uid]);
+        }
+    });
+
+    logm("END uuid={$uuid} contact={$cid} status={$status} billsec={$billsec} cause={$cause} dtmf={$c['dtmf']}");
 }
 
 function dialTick(Esl $esl, array &$active): void
@@ -257,7 +282,7 @@ function dialTick(Esl $esl, array &$active): void
         }
 
         if (BILLING_ENABLED && (float)$k['balance'] <= 0) {
-            $pdo->prepare("UPDATE vb_campaigns SET status='paused' WHERE id=?")->execute([$kid]);
+            $pdo->prepare("UPDATE vb_campaigns SET status='paused', updated_at=NOW() WHERE id=?")->execute([$kid]);
             logm("Campaign {$kid} paused: balance শেষ");
             continue;
         }
@@ -277,7 +302,6 @@ function dialTick(Esl $esl, array &$active): void
 
             $slots = min((int)$k['max_channels'] - $cnt, MAX_ORIGINATE_PER_TICK);
 
-            // দৈনিক কল লিমিট চেক
             $q = $pdo->prepare("SELECT COUNT(*) FROM vb_contacts c JOIN vb_campaigns kk ON kk.id = c.campaign_id
                                 WHERE kk.user_id = ? AND c.last_attempt_at >= CURDATE()");
             $q->execute([$k['user_id']]);
@@ -295,7 +319,6 @@ function dialTick(Esl $esl, array &$active): void
                 foreach ($pdo->query($sql)->fetchAll() as $c) {
                     $fetched++;
 
-                    // DNC চেক
                     $d = $pdo->prepare("SELECT 1 FROM vb_dnc WHERE user_id = ? AND number = ? LIMIT 1");
                     $d->execute([$k['user_id'], $c['number']]);
                     if ($d->fetchColumn()) {
@@ -347,7 +370,6 @@ function dialTick(Esl $esl, array &$active): void
             }
         }
 
-        // সব কল ও রিট্রাই শেষ হলে ক্যাম্পেইন done
         if ($cnt === 0 && $fetched === 0) {
             $r = $pdo->prepare("
                 SELECT COUNT(*) FROM vb_contacts c
@@ -357,7 +379,7 @@ function dialTick(Esl $esl, array &$active): void
             ");
             $r->execute([$kid]);
             if ((int)$r->fetchColumn() === 0) {
-                $pdo->prepare("UPDATE vb_campaigns SET status='done' WHERE id=?")->execute([$kid]);
+                $pdo->prepare("UPDATE vb_campaigns SET status='done', updated_at=NOW() WHERE id=?")->execute([$kid]);
                 logm("Campaign {$kid} done");
             }
         }
@@ -368,7 +390,7 @@ function cleanupStale(array $active): void
 {
     $sql = "UPDATE vb_contacts c JOIN vb_campaigns k ON k.id = c.campaign_id
             SET c.status = IF(c.attempts < 1 + k.retry_count, 'pending', 'failed')
-            WHERE c.status = 'calling' AND c.last_attempt_at < NOW() - INTERVAL 20 MINUTE";
+            WHERE c.status = 'calling' AND c.last_attempt_at < NOW() - INTERVAL 5 MINUTE";
     if ($active) {
         $in = implode(',', array_map(fn($u) => db()->quote($u), array_keys($active)));
         $sql .= " AND c.call_uuid NOT IN ({$in})";
@@ -412,8 +434,8 @@ while (true) {
         }
         $ev   = Esl::parse($f['b'], true);
         $name = $ev['Event-Name'] ?? '';
-        $uuid = $ev['Unique-ID'] ?? '';
-        if (!isset($active[$uuid])) {
+        $uuid = resolveCallUuid($ev, $active);
+        if ($uuid === '' || !isset($active[$uuid])) {
             continue;
         }
 
@@ -449,7 +471,7 @@ while (true) {
             if ($esl->alive()) {
                 dialTick($esl, $active);
             }
-            if (time() - $lastClean >= 300) {
+            if (time() - $lastClean >= 120) {
                 $lastClean = time();
                 cleanupStale($active);
             }
