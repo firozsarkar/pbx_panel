@@ -191,11 +191,12 @@ function transferDial(string $to, string $gw): ?string
     if (strpos($to, '/') !== false) {
         return preg_match('/^[A-Za-z0-9_.@\/\-]+$/', $to) ? $to : null;
     }
-    if (preg_match('/^\d{2,6}$/', $to)) {
+    if (preg_match('/^\d{2,5}$/', $to)) {
         return 'user/' . $to . '@' . DOMAIN;
     }
-    if (preg_match('/^\+?\d{6,15}$/', $to)) {
-        return 'sofia/gateway/' . $gw . '/' . ltrim($to, '+');
+    $cleanNum = preg_replace('/[^0-9]/', '', $to);
+    if ($cleanNum !== '' && strlen($cleanNum) >= 6 && strlen($cleanNum) <= 15) {
+        return 'sofia/gateway/' . $gw . '/' . $cleanNum;
     }
     return null;
 }
