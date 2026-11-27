@@ -1,24 +1,23 @@
 <?php
 /**
- * vb_worker.php — Voice Broadcasting ডায়ালার (cPanel: 103.163.246.205 -> FreeSWITCH: 38.60.235.146)
+ * vb_worker.php — Voice Broadcasting ডায়ালার (FreeSWITCH VPS: 38.60.235.146)
+ * Path: /var/www/html/vb_worker.php
  *
- * cPanel Cron Job (প্রতি মিনিটে):
- *   * * * * * /usr/local/bin/php /home/YOUR_CPANEL_USER/public_html/freeswitch/vb_worker.php >> /home/YOUR_CPANEL_USER/public_html/freeswitch/vb_worker.log 2>&1
- *
- * অথবা ব্রাউজার / URL Cron দিয়ে চালাতে চাইলে:
- *   https://pbx.registercamp.com/freeswitch/vb_worker.php?key=CHANGE_THIS_SECRET_KEY
+ * FreeSWITCH VPS-এ crontab -e দিয়ে যুক্ত করুন:
+ *   * * * * * /usr/bin/php /var/www/html/vb_worker.php >> /var/log/vb_worker.log 2>&1
  */
-
+if (PHP_SAPI !== 'cli') {
+    exit("CLI only\n");
+}
 set_time_limit(0);
-ignore_user_abort(true);
 
 /* ============================ কনফিগ ============================ */
-const ESL_HOST = '38.60.235.146';       // FreeSWITCH VPS IP
+const ESL_HOST = '127.0.0.1';
 const ESL_PORT = 8021;
-const ESL_PASS = 'ClueCon';             // FreeSWITCH event_socket.conf.xml এর password
+const ESL_PASS = 'ClueCon';               // /etc/freeswitch/autoload_configs/event_socket.conf.xml এর password
 
-// cPanel লোকাল ডাটাবেস কনফিগ
-const DB_HOST  = 'localhost';
+// cPanel Remote MySQL কনফিগ (cPanel-এ 38.60.235.146 IP হোয়াইটলিস্ট থাকতে হবে)
+const DB_HOST  = '103.163.246.205';
 const DB_PORT  = 3306;
 const DB_NAME  = 'register_pbx';
 const DB_USER  = 'register_pbx';
@@ -26,48 +25,24 @@ const DB_PASS  = 'register_pbx';
 
 const DOMAIN   = '38.60.235.146';
 
-// ব্রাউজার/HTTP থেকে চালালে এই key লাগবে (নিজে বদলে নিন)
-const CRON_KEY = 'CHANGE_THIS_SECRET_KEY';
-
-// প্রতি রানে সর্বোচ্চ কত সেকেন্ড লুপ চলবে (cPanel প্রসেস টাইমআউট এড়াতে)
-const MAX_RUN_SECONDS        = 55;
 const ORIGINATE_TIMEOUT      = 30;      // রিং করার সর্বোচ্চ সময় (সেকেন্ড)
-const MAX_ORIGINATE_PER_TICK = 2;       // প্রতি সেকেন্ডে সর্বোচ্চ নতুন কল
+const MAX_ORIGINATE_PER_TICK = 2;       // প্রতি সেকেন্ডে সর্বোচ্চ নতুন কল (গেটওয়ে CPS সুরক্ষা)
 const PRESS1_WAIT_MS         = 8000;    // অডিও শেষ হওয়ার পর ১ চাপার জন্য অপেক্ষা (মিলিসেকেন্ড)
 
 // বিলিং (প্রথমে false রাখুন; চালু করতে true করুন)
 const BILLING_ENABLED = false;
 const RATE_PER_MIN    = 0.50;
-const BILL_STEP       = 6;
-
-/* ============================ অ্যাক্সেস ও হেডার ============================ */
-$isCli = (PHP_SAPI === 'cli');
-if (!$isCli) {
-    $providedKey = (string)($_GET['key'] ?? $_POST['key'] ?? '');
-    if (CRON_KEY === '' || !hash_equals(CRON_KEY, $providedKey)) {
-        http_response_code(403);
-        header('Content-Type: text/plain; charset=utf-8');
-        exit("Forbidden: invalid or missing key\n");
-    }
-    header('Content-Type: text/plain; charset=utf-8');
-    @ob_implicit_flush(true);
-    while (@ob_get_level() > 0) {
-        @ob_end_flush();
-    }
-}
+const BILL_STEP       = 6;              // সেকেন্ড পালস
 
 /* ============================ লক ============================ */
-$lockPath = sys_get_temp_dir() . '/vb_worker.lock';
-$lock = @fopen($lockPath, 'c');
+$lock = fopen('/tmp/vb_worker.lock', 'c');
 if (!$lock || !flock($lock, LOCK_EX | LOCK_NB)) {
-    echo date('Y-m-d H:i:s') . " | Worker already running, exit\n";
-    exit(0);
+    exit(0); // আরেকটি ওয়ার্কার ইতিমধ্যে চলছে
 }
 
 function logm(string $m): void
 {
     echo date('Y-m-d H:i:s') . ' | ' . $m . "\n";
-    @flush();
 }
 
 /* ============================ ESL ক্লায়েন্ট ============================ */
@@ -82,7 +57,7 @@ class Esl
         $this->buf = '';
         $this->fp = @stream_socket_client('tcp://' . ESL_HOST . ':' . ESL_PORT, $en, $es, 5);
         if (!$this->fp) {
-            logm("ESL socket error to " . ESL_HOST . ":" . ESL_PORT . " ({$en}): {$es}");
+            logm("ESL socket error ({$en}): {$es}");
             return false;
         }
         $f = $this->wait(5);
@@ -241,6 +216,7 @@ function finishCall(array $c, string $uuid, array $h): void
         $status = 'failed';
     }
 
+    // রিট্রাই বাকি থাকলে আবার pending সেট হবে
     if ($status !== 'answered' && $c['attempts'] < 1 + $c['retry']) {
         $status = 'pending';
     }
@@ -293,13 +269,15 @@ function dialTick(Esl $esl, array &$active): void
             $cli   = preg_replace('/[^0-9+]/', '', (string)$k['caller_id']);
 
             if (!preg_match('/^[A-Za-z0-9_.\-]+$/', $gw)
-                || !preg_match('/^[A-Za-z0-9_\/.\-]+$/', $audio)) {
-                logm("Campaign {$kid} skipped: invalid gateway ({$gw}) বা audio ({$audio})");
+                || !preg_match('/^[A-Za-z0-9_\/.\-]+$/', $audio)
+                || !is_file($audio)) {
+                logm("Campaign {$kid} skipped: gateway ({$gw}) বা audio ফাইল ({$audio}) পাওয়া যায়নি");
                 continue;
             }
 
             $slots = min((int)$k['max_channels'] - $cnt, MAX_ORIGINATE_PER_TICK);
 
+            // দৈনিক কল লিমিট চেক
             $q = $pdo->prepare("SELECT COUNT(*) FROM vb_contacts c JOIN vb_campaigns kk ON kk.id = c.campaign_id
                                 WHERE kk.user_id = ? AND c.last_attempt_at >= CURDATE()");
             $q->execute([$k['user_id']]);
@@ -317,6 +295,7 @@ function dialTick(Esl $esl, array &$active): void
                 foreach ($pdo->query($sql)->fetchAll() as $c) {
                     $fetched++;
 
+                    // DNC চেক
                     $d = $pdo->prepare("SELECT 1 FROM vb_dnc WHERE user_id = ? AND number = ? LIMIT 1");
                     $d->execute([$k['user_id'], $c['number']]);
                     if ($d->fetchColumn()) {
@@ -368,6 +347,7 @@ function dialTick(Esl $esl, array &$active): void
             }
         }
 
+        // সব কল ও রিট্রাই শেষ হলে ক্যাম্পেইন done
         if ($cnt === 0 && $fetched === 0) {
             $r = $pdo->prepare("
                 SELECT COUNT(*) FROM vb_contacts c
@@ -397,7 +377,7 @@ function cleanupStale(array $active): void
 }
 
 /* ============================ মেইন লুপ ============================ */
-logm('Worker start (' . ($isCli ? 'CLI' : 'HTTP') . ')');
+logm('Worker start');
 
 try {
     db()->exec("UPDATE vb_contacts c JOIN vb_campaigns k ON k.id = c.campaign_id
@@ -409,13 +389,12 @@ try {
 
 $esl = new Esl();
 $active = [];
-$startTime = microtime(true);
 $lastTick = 0.0;
 $lastClean = time();
 
-while ((microtime(true) - $startTime) < MAX_RUN_SECONDS) {
+while (true) {
     if (!$esl->alive()) {
-        logm('ESL connecting to ' . ESL_HOST . ':' . ESL_PORT . '...');
+        logm('ESL connecting...');
         if (!$esl->connect()) {
             logm('ESL connect failed, retry in 5s');
             sleep(5);
@@ -479,6 +458,3 @@ while ((microtime(true) - $startTime) < MAX_RUN_SECONDS) {
         }
     }
 }
-
-$esl->close();
-logm('Worker cycle finished cleanly');
