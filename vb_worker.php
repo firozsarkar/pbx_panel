@@ -191,16 +191,14 @@ function transferDial(string $to, string $gw): ?string
     if (strpos($to, '/') !== false) {
         return preg_match('/^[A-Za-z0-9_.@\/\-]+$/', $to) ? $to : null;
     }
-    if (preg_match('/^\d{2,5}$/', $to)) {
-        return 'user/' . $to . '@' . DOMAIN;
+    if (preg_match('/^\d{2,6}$/', $to)) {
+        return 'EXT:' . $to;
     }
-    $cleanNum = preg_replace('/[^0-9]/', '', $to);
-    if ($cleanNum !== '' && strlen($cleanNum) >= 6 && strlen($cleanNum) <= 15) {
-        return 'sofia/gateway/' . $gw . '/' . $cleanNum;
+    if (preg_match('/^\+?\d{6,15}$/', $to)) {
+        return 'sofia/gateway/' . $gw . '/' . ltrim($to, '+');
     }
     return null;
 }
-
 function finishCall(array $c, string $uuid, array $h): void
 {
     $billsec = (int)($h['variable_billsec'] ?? 0);
@@ -426,14 +424,21 @@ while (true) {
                 $digit = (string)($ev['DTMF-Digit'] ?? '');
                 $active[$uuid]['dtmf'] .= $digit;
                 $a = $active[$uuid];
-                if ($digit === '1' && $a['press1'] && !$a['xferred']) {
-                    $dial = transferDial($a['xfer'], $a['gw']);
-                    if ($dial) {
-                        $active[$uuid]['xferred'] = true;
-                        $esl->send("bgapi uuid_transfer {$uuid} 'set:hangup_after_bridge=true,bridge:{$dial}'");
-                        logm("TRANSFER uuid={$uuid} -> {$dial}");
-                    }
-                }
+               if ($digit === '1' && $a['press1'] && !$a['xferred']) {
+    $dial = transferDial($a['xfer'], $a['gw']);
+    if ($dial) {
+        $active[$uuid]['xferred'] = true;
+        if (strpos($dial, 'EXT:') === 0) {
+            $ext = substr($dial, 4);
+            $bridgeExpr = '${sofia_contact(' . $ext . '@' . DOMAIN . ')}';
+            $esl->send("bgapi uuid_transfer {$uuid} 'set:hangup_after_bridge=true,bridge:{$bridgeExpr}' inline");
+            logm("TRANSFER uuid={$uuid} -> ext {$ext} via sofia_contact");
+        } else {
+            $esl->send("bgapi uuid_transfer {$uuid} 'set:hangup_after_bridge=true,bridge:{$dial}' inline");
+            logm("TRANSFER uuid={$uuid} -> {$dial}");
+        }
+    }
+}
 
             } elseif ($name === 'CHANNEL_HANGUP_COMPLETE') {
                 finishCall($active[$uuid], $uuid, $ev);
