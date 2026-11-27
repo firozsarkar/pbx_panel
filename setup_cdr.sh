@@ -1,91 +1,136 @@
-#!/usr/bin/env bash
-set -euo pipefail
+<?php
+header('Content-Type: application/json');
 
-SYNC_URL="https://pbx.registercamp.com/freeswitch/sync_cdr.php"
-SYNC_TOKEN="firoz"
-CDR_FILE="/usr/local/freeswitch/log/cdr-csv/Master.csv"
-WORKER_SCRIPT="/usr/local/bin/fs_cdr_sync.sh"
-CRON_LINE="* * * * * ${WORKER_SCRIPT} >/dev/null 2>&1"
-CRON_MARKER="# FS_CDR_SYNC_CRON"
+const DB_HOST = '103.163.246.205';
+const DB_PORT = 3306;
+const DB_NAME = 'register_pbx';
+const DB_USER = 'register_pbx';
+const DB_PASS = 'register_pbx';
 
-# 1. Worker script তৈরি
-cat << WORKER_EOF > "${WORKER_SCRIPT}"
-#!/usr/bin/env bash
-set -u
+$cdrDir = '/var/log/freeswitch/cdr-csv/';
 
-CDR_FILE="${CDR_FILE}"
-SYNC_URL="${SYNC_URL}"
-SYNC_TOKEN="${SYNC_TOKEN}"
+try {
+    $dsn = sprintf('mysql:host=%s;port=%d;dbname=%s;charset=utf8mb4', DB_HOST, DB_PORT, DB_NAME);
+    $pdo = new PDO($dsn, DB_USER, DB_PASS, [
+        PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
+        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+        PDO::ATTR_TIMEOUT            => 10,
+    ]);
+} catch (Throwable $e) {
+    http_response_code(500);
+    echo json_encode([
+        "status"  => "error",
+        "message" => "Database connection failed: " . $e->getMessage()
+    ], JSON_PRETTY_PRINT);
+    exit;
+}
 
-LOCK_FILE="/var/lock/fs_cdr_sync.lock"
-STATE_DIR="/var/lib/fs_cdr_sync"
-BATCH_FILE="\$STATE_DIR/batch.csv"
-PAYLOAD_FILE="\$STATE_DIR/payload.json"
-RESP_FILE="\$STATE_DIR/resp.json"
-ERR_LOG="/var/log/fs_cdr_sync.log"
+$sql = "INSERT IGNORE INTO `cdr_logs` (
+    `uuid`, `bleg_uuid`, `source_file`, `caller_id`, `src_number`, `destination`,
+    `context`, `start_time`, `answer_time`, `end_time`, `duration`, `billsec`,
+    `hangup_cause`, `accountcode`, `read_codec`, `write_codec`
+) VALUES (
+    :uuid, :bleg_uuid, :source_file, :caller_id, :src_number, :destination,
+    :context, :start_time, :answer_time, :end_time, :duration, :billsec,
+    :hangup_cause, :accountcode, :read_codec, :write_codec
+)";
+$stmt = $pdo->prepare($sql);
 
-mkdir -p "\$STATE_DIR"
+$files = glob($cdrDir . '*.csv') ?: [];
+$insertedCount = 0;
+$processedFiles = 0;
+$deletedFiles = 0;
+$errors = [];
 
-exec 9>"\$LOCK_FILE"
-flock -n 9 || exit 0
+foreach ($files as $csvFile) {
+    if (!is_readable($csvFile) || !is_writable($csvFile)) {
+        $errors[] = "Permission issue on " . basename($csvFile);
+        continue;
+    }
 
-if [ ! -s "\$CDR_FILE" ]; then
-    exit 0
-fi
+    $lines = file($csvFile, FILE_IGNORE_NEW_LINES);
+    if ($lines === false) {
+        $errors[] = "Failed to read " . basename($csvFile);
+        continue;
+    }
 
-cp "\$CDR_FILE" "\$BATCH_FILE" || exit 0
-: > "\$CDR_FILE"
+    // ফাইল একদম খালি হলে সরাসরি ডিলিট করুন
+    if (count($lines) === 0) {
+        if (@unlink($csvFile)) {
+            $deletedFiles++;
+        }
+        continue;
+    }
 
-python3 - "\$BATCH_FILE" "\$PAYLOAD_FILE" << 'PYEOF'
-import hashlib, json, sys
+    $processedFiles++;
+    $remainingLines = [];
+    $fileHasError = false;
 
-batch_path, out_path = sys.argv[1], sys.argv[2]
-items = []
+    foreach ($lines as $line) {
+        $trimmed = trim($line);
+        if ($trimmed === '') {
+            continue;
+        }
 
-with open(batch_path, "r", encoding="utf-8", errors="replace") as f:
-    for raw in f:
-        line = raw.rstrip("\r\n")
-        if not line.strip():
-            continue
-        h = hashlib.sha256(line.encode("utf-8")).hexdigest()
-        items.append({"hash": h, "line": line})
+        $data = str_getcsv($line);
+        if (empty($data) || count($data) < 3) {
+            // অপর্যাপ্ত বা ভাঙা লাইন থাকলে রেখে দিন
+            $remainingLines[] = $line;
+            continue;
+        }
 
-with open(out_path, "w", encoding="utf-8") as out:
-    json.dump({"lines": items}, out, ensure_ascii=False)
-PYEOF
+        $uuid = trim($data[10] ?? '');
+        if ($uuid === '') {
+            // UUID না থাকলে fallback unique key তৈরি করুন
+            $uuid = md5($line);
+        }
 
-if [ ! -s "\$PAYLOAD_FILE" ]; then
-    rm -f "\$BATCH_FILE" "\$PAYLOAD_FILE"
-    exit 0
-fi
+        try {
+            $stmt->execute([
+                ':uuid'         => $uuid,
+                ':bleg_uuid'    => $data[11] ?? '',
+                ':source_file'  => basename($csvFile),
+                ':caller_id'    => $data[0] ?? '',
+                ':src_number'   => $data[1] ?? '',
+                ':destination'  => $data[2] ?? '',
+                ':context'      => $data[3] ?? '',
+                ':start_time'   => $data[4] ?? '',
+                ':answer_time'  => $data[5] ?? '',
+                ':end_time'     => $data[6] ?? '',
+                ':duration'     => (int)($data[7] ?? 0),
+                ':billsec'      => (int)($data[8] ?? 0),
+                ':hangup_cause' => $data[9] ?? '',
+                ':accountcode'  => $data[12] ?? '',
+                ':read_codec'   => $data[13] ?? '',
+                ':write_codec'  => $data[14] ?? '',
+            ]);
+            if ($stmt->rowCount() > 0) {
+                $insertedCount++;
+            }
+        } catch (Throwable $e) {
+            $fileHasError = true;
+            $errors[] = basename($csvFile) . " row error: " . $e->getMessage();
+            $remainingLines[] = $line;
+        }
+    }
 
-HTTP_CODE=\$(curl -sS -X POST "\$SYNC_URL" \\
-    -H "Content-Type: application/json" \\
-    -H "X-SYNC-TOKEN: \$SYNC_TOKEN" \\
-    --data-binary @"\$PAYLOAD_FILE" \\
-    -o "\$RESP_FILE" \\
-    -w "%{http_code}" --connect-timeout 10 --max-time 30) || HTTP_CODE="000"
+    // কোনো লাইন বাকি না থাকলে ফাইল ডিলিট করুন, নাহলে বাকি লাইনগুলো রেখে ফাইল আপডেট করুন
+    if (!$fileHasError && count($remainingLines) === 0) {
+        if (@unlink($csvFile)) {
+            $deletedFiles++;
+        } else {
+            $errors[] = "Could not delete " . basename($csvFile);
+        }
+    } else {
+        $content = count($remainingLines) > 0 ? implode(PHP_EOL, $remainingLines) . PHP_EOL : '';
+        file_put_contents($csvFile, $content, LOCK_EX);
+    }
+}
 
-if [ "\$HTTP_CODE" = "200" ] && grep -q '"status"[[:space:]]*:[[:space:]]*"ok"' "\$RESP_FILE" 2>/dev/null; then
-    rm -f "\$BATCH_FILE" "\$PAYLOAD_FILE" "\$RESP_FILE"
-else
-    { cat "\$BATCH_FILE"; cat "\$CDR_FILE"; } > "\$CDR_FILE.tmp" && mv "\$CDR_FILE.tmp" "\$CDR_FILE"
-    rm -f "\$BATCH_FILE" "\$PAYLOAD_FILE" "\$RESP_FILE"
-    echo "\$(date '+%F %T') Sync failed (HTTP \$HTTP_CODE)" >> "\$ERR_LOG"
-fi
-WORKER_EOF
-
-chmod +x "${WORKER_SCRIPT}"
-
-# 2. Duplicate cron এড়িয়ে শুধুমাত্র ১টি cron এন্ট্রি নিশ্চিত করা
-CURRENT_CRON="$(crontab -l 2>/dev/null || true)"
-CLEAN_CRON="$(printf "%s\n" "${CURRENT_CRON}" | grep -v "${WORKER_SCRIPT}" | grep -v "${CRON_MARKER}" || true)"
-
-{
-    if [ -n "${CLEAN_CRON}" ]; then
-        printf "%s\n" "${CLEAN_CRON}"
-    fi
-    printf "%s %s\n" "${CRON_LINE}" "${CRON_MARKER}"
-} | crontab -
-
-echo "DONE: ${WORKER_SCRIPT} configured for ${SYNC_URL}"
+echo json_encode([
+    "status"          => "success",
+    "processed_files" => $processedFiles,
+    "inserted_calls"  => $insertedCount,
+    "deleted_files"   => $deletedFiles,
+    "errors"          => $errors
+], JSON_PRETTY_PRINT | JSON_INVALID_UTF8_SUBSTITUTE);
